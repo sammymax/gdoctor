@@ -56,53 +56,47 @@ function upload_file(file) {
   const BOUNDARY = "--ASD_ASD_ASD_123456789_987654321_YUH_YUH";
   readFile(file).then(
     base64File => {
-      console.log("ASd");
       console.log(base64File);
+      gapi.client.request({
+        path: "upload/drive/v3/files",
+        method: "POST",
+        params: { uploadType: "multipart" },
+        headers: {
+          "Content-type": `multipart/related; boundary=${BOUNDARY}`,
+        },
+        body: formatMultipartBody("ayo2.png", file.type, base64File, BOUNDARY)
+      }).then(
+        response => console.log("upload success ", response),
+        err => console.error("upload error ", error)
+      );
     }
   );
-  //  readFile(file).then(
-  //    base64File => {
-  //      console.log(base64File);
-  //      gapi.client.request({
-  //        path: "upload/drive/v3/files",
-  //        method: "POST",
-  //        params: { uploadType: "multipart" },
-  //        headers: {
-  //          "Content-type": `multipart/related; boundary=${BOUNDARY}`,
-  //          "Content-length": file.size
-  //        },
-  //        body: formatMultipartBody("ayo2", file.type, base64File, BOUNDARY)
-  //      }).then(
-  //        response => console.log("upload success ", response),
-  //        err => console.error("upload error ", error)
-  //      );
-  //    }
-  //  );
 }
 
 function readFile(file) {
   const fr = new FileReader();
   return new Promise((resolve, reject) => {
     fr.onload = (event) => resolve(btoa(fr.result));
-    //fr.readAsBinaryString(file);
-    fr.readAsArrayBuffer(file);
+    //fr.onload = (event) => resolve(fr.result);
+    fr.readAsBinaryString(file);
   });
 }
 
 function formatMultipartBody(fileName, fileType, base64Data, BOUNDARY) {
-  const delimiter = `--${BOUNDARY}`;
-  const closeDelimiter = `--${BOUNDARY}--`;
+  const delimiter = "\r\n--" + BOUNDARY + "\r\n";
+  const closeDelimiter = "\r\n--" + BOUNDARY + "--";
   const metadata = {
     name: fileName, mimeType: fileType || 'application/octet-stream'
   };
-  const body = `
-  \n${delimiter}\
-  \nContent-Type: application/json; charset=UTF-8\
-  \n\n${JSON.stringify(metadata)}\
-  \n${delimiter}\
-  \nContent-Type: ${fileType || 'application/octet-stream'}\
-  \nContent-Transfer-Encoding: base64\
-  \n\n${base64Data}\
-  \n${closeDelimiter}`;
+  const body =
+    delimiter +
+    'Content-Type: application/json\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    'Content-Type: ' + fileType + '\r\n' +
+    'Content-Transfer-Encoding: base64\r\n' +
+    '\r\n' +
+    base64Data +
+    closeDelimiter;
   return body;
 }
