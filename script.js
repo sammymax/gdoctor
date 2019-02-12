@@ -3,9 +3,9 @@ const SCOPES = "https://www.googleapis.com/auth/drive.file";
 const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
 
 var stage = 0;
-var signin_status = document.getElementById("signin-status");
-var signin_button = document.getElementById("signin-button");
-var file_input = document.getElementById("file-input");
+const signin_status = document.getElementById("signin-status");
+const signin_button = document.getElementById("signin-button");
+const file_input = document.getElementById("file-input");
 
 var mimeReplacements = {};
 
