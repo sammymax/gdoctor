@@ -82,6 +82,9 @@ function readFile(file) {
 }
 
 function formatMultipartBody(fileName, fileType, base64Data, BOUNDARY) {
+  // thank you to:
+  // 1. https://stackoverflow.com/questions/51559203
+  // 2. https://stackoverflow.com/questions/33842963
   const delimiter = "\r\n--" + BOUNDARY + "\r\n";
   const closeDelimiter = "\r\n--" + BOUNDARY + "--";
   const metadata = {
