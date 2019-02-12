@@ -3,7 +3,10 @@ const SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/gmail.readonly",
 ].join(" ");
-const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
+const DISCOVERY_DOCS = [
+  "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
+  "https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest"
+];
 
 var stage = 0;
 const signin_status = document.getElementById("signin-status");
@@ -11,6 +14,22 @@ const signin_button = document.getElementById("signin-button");
 const query_input = document.getElementById("query-input");
 
 var mimeReplacements = {};
+
+function executePromisesSequentially(promiseList) {
+  _executePromisesSequentially(promiseList, 0);
+}
+
+// returns a promise
+function _executePromisesSequentially(promiseList, idx) {
+  console.log("info ", idx, promiseList.length);
+  if (idx === promiseList.length)
+    promiseList[idx].execute();
+  else
+    promiseList[idx].then(
+      resp => _executePromisesSequentially(promiseList, idx + 1),
+      err  => _executePromisesSequentially(promiseList, idx)
+    );
+}
 
 function handleClientLoad() {
   gapi.load("client:auth2", initClient);
@@ -47,8 +66,33 @@ function signin(event) {
 }
 
 function searchEmails() {
-  const q = query_input.value;
-  console.log(q);
+  _searchEmails(query_input.value);
+}
+
+function _searchEmails(query) {
+  var getPageOfMessages = function(request, result) {
+    request.execute(function(resp) {
+      result = result.concat(resp.messages);
+      console.log(result.length);
+      var nextPageToken = resp.nextPageToken;
+      if (nextPageToken) {
+        request = gapi.client.gmail.users.messages.list({
+          'userId': 'me',
+          'pageToken': nextPageToken,
+          'q': query
+        });
+        getPageOfMessages(request, result);
+      }
+    });
+  };
+  var initialRequest = gapi.client.gmail.users.messages.list({
+    'userId': 'me',
+    'q': query
+  });
+  getPageOfMessages(initialRequest, []);
+}
+
+function convertBatch(messages) {
 }
 
 function upload(file) {
