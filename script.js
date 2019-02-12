@@ -80,7 +80,8 @@ function searchEmails() {
           'q': query
         });
         getPageOfMessages(request, result);
-      }
+      } else
+        processEmails(result);
     });
   };
   const initialRequest = gapi.client.gmail.users.messages.list({
@@ -90,7 +91,49 @@ function searchEmails() {
   getPageOfMessages(initialRequest, []);
 }
 
-function convertBatch(messages) {
+function processEmails(emailList) {
+  const queryMsg = (msgId) => {
+    return gapi.client.gmail.users.messages.get({
+      'userId': 'me',
+      'id': msgId
+    });
+  };
+  const queryThread = (threadId) => {
+    return gapi.client.gmail.users.threads.get({
+      'userId': 'me',
+      'id': threadId
+    });
+  };
+
+  const BATCH_SZ = 50;
+
+  const batcher = (idxToReq) => {
+    return new Promise((resolve, reject) => {
+      const res = [];
+      const singleBatch = (startIdx) => {
+        var batch = gapi.client.newBatch();
+        for (var i = 0; startIdx + i < emailList.length && i < BATCH_SZ; i++)
+          batch.add(idxToReq(startIdx + i));
+        batch.then(respMap => {
+          for (var key in respMap.result)
+            res.push(respMap.result[key].result);
+          if (startIdx + BATCH_SZ < emailList.length)
+            singleBatch(startIdx + BATCH_SZ);
+          else
+            resolve(res);
+        });
+      }
+      singleBatch(0);
+    });
+  }
+  msgPromise = batcher(idx => queryMsg(emailList[idx]["id"]));
+  threadPromise = batcher(idx => queryThread(emailList[idx]["threadId"]));
+  msgPromise.then(res => {
+    console.log(res);
+    threadPromise.then(res2 => {
+      console.log(res2);
+    });
+  });
 }
 
 function upload(file) {
