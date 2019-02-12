@@ -85,8 +85,8 @@ function searchEmails() {
     });
   };
   const initialRequest = gapi.client.gmail.users.messages.list({
-    'userId': 'me',
-    'q': query
+    userId: "me",
+    q: query
   });
   getPageOfMessages(initialRequest, []);
 }
@@ -94,14 +94,15 @@ function searchEmails() {
 function processEmails(emailList) {
   const queryMsg = (msgId) => {
     return gapi.client.gmail.users.messages.get({
-      'userId': 'me',
-      'id': msgId
+      userId: "me",
+      id: msgId,
+      format: "raw"
     });
   };
   const queryThread = (threadId) => {
     return gapi.client.gmail.users.threads.get({
-      'userId': 'me',
-      'id': threadId
+      userId: "me",
+      id: threadId,
     });
   };
 
@@ -111,7 +112,7 @@ function processEmails(emailList) {
     return new Promise((resolve, reject) => {
       const res = [];
       const singleBatch = (startIdx) => {
-        var batch = gapi.client.newBatch();
+        const batch = gapi.client.newBatch();
         for (var i = 0; startIdx + i < emailList.length && i < BATCH_SZ; i++)
           batch.add(idxToReq(startIdx + i));
         batch.then(respMap => {
