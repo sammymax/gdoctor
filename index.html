@@ -6,6 +6,10 @@
   <body>
     <h1 id="signin-status">Not Signed In</h1>
     <button id="signin-button" onclick="signin()">Sign In</button>
+    <form onsubmit="searchEmails(); return false">
+      <input type="text" name="query" id="query-input" placeholder="Email search query">
+      <input type="submit" value="Submit">
+    </form>
     <button id="upload" onclick="upload()">Upload</button>
     <input type="file" id="file-input"/>
 

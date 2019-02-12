@@ -1,11 +1,14 @@
 const CLIENT_ID = "823146793082-7lgsb7a22pdeilk7vbb8k9ptp7jnfgsm.apps.googleusercontent.com";
-const SCOPES = "https://www.googleapis.com/auth/drive.file";
+const SCOPES = [
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/gmail.readonly",
+].join(" ");
 const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
 
 var stage = 0;
 const signin_status = document.getElementById("signin-status");
 const signin_button = document.getElementById("signin-button");
-const file_input = document.getElementById("file-input");
+const query_input = document.getElementById("query-input");
 
 var mimeReplacements = {};
 
@@ -43,12 +46,17 @@ function signin(event) {
   gapi.auth2.getAuthInstance().signIn();
 }
 
-function upload() {
+function searchEmails() {
+  const q = query_input.value;
+  console.log(q);
+}
+
+function upload(file) {
   if (stage !== 2) {
     console.log("not ready");
     return;
   }
-  upload_file(file_input.files[0]);
+  upload_file(file);
 }
 
 function getMimeReplacements() {
