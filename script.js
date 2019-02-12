@@ -2,7 +2,7 @@ const CLIENT_ID = "823146793082-7lgsb7a22pdeilk7vbb8k9ptp7jnfgsm.apps.googleuser
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
 const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
 
-var signin = false;
+var signedin = false;
 var signin_status = document.getElementById("signin-status");
 var signin_button = document.getElementById("signin-button");
 var file_input = document.getElementById("file-input");
@@ -28,8 +28,8 @@ function initClient() {
 }
 
 function updateSigninStatus(isSignedIn) {
-  signin = isSignedIn;
-  if (signin) {
+  signedin = isSignedIn;
+  if (signedin) {
     signin_status.innerHTML = "Signed in";
     signin_button.style.display = "none";
   } else {
@@ -43,7 +43,7 @@ function signin(event) {
 }
 
 function upload() {
-  if (!signin) {
+  if (!signedin) {
     console.log("not signed in, can't do it");
     return;
   }
@@ -77,7 +77,6 @@ function readFile(file) {
   const fr = new FileReader();
   return new Promise((resolve, reject) => {
     fr.onload = (event) => resolve(btoa(fr.result));
-    //fr.onload = (event) => resolve(fr.result);
     fr.readAsBinaryString(file);
   });
 }
