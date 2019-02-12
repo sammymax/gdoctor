@@ -130,11 +130,107 @@ function processEmails(emailList) {
   msgPromise = batcher(idx => queryMsg(emailList[idx]["id"]));
   threadPromise = batcher(idx => queryThread(emailList[idx]["threadId"]));
   msgPromise.then(res => {
-    console.log(res);
+    rawBodySubstitute(emailFromBase64(res[0].raw));
     threadPromise.then(res2 => {
       console.log(res2);
     });
   });
+}
+
+function emailFromBase64(b64url) {
+  return atob(b64url.replace(/\-/g, '+').replace(/\_/g, '/'));
+}
+
+function emailToBase64(raw) {
+  return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function rawBodySubstitute(rawEmail) {
+  lines = rawEmail.split("\r\n");
+  res = [];
+  getLeafTypes(lines, 0, lines.length, res);
+  console.log(lines);
+  console.log(res);
+}
+
+function getLeafTypes(rawEmailLines, start, end, resList) {
+  var headerIdx = start;
+  for (; headerIdx < end; headerIdx++)
+    if (rawEmailLines[headerIdx].length === 0)
+      break;
+  // from what I've seen at https://mailformat.dan.info,
+  // <header> <newline> is invalid; need at least another line after
+  if (headerIdx + 1 >= end) {
+    console.error("couldn't find body, all head");
+    return;
+  }
+
+  var contentType = "";
+  for (var i = start; i < headerIdx; i++) {
+    // https://stackoverflow.com/questions/6143549: headers not case sensitive
+    if (rawEmailLines[i].toLowerCase().startsWith("content-type")) {
+      contentType = rawEmailLines[i];
+      for (var j = i + 1; j < headerIdx; j++) {
+        // https://tools.ietf.org/html/rfc2822, section 2.2.3: header unfolding
+        if (rawEmailLines[j][0] === " " || rawEmailLines[j][0] === "\t")
+          contentType += rawEmailLines[j];
+        else
+          break;
+      }
+      break;
+    }
+  }
+
+  const mimeType = parseMimeType(contentType);
+  if (mimeType.toLowerCase().startsWith("multipart")) {
+    const boundary = "--" + parseMimeBoundary(contentType);
+    const closeBoundary = boundary + "--";
+
+    const splits = [];
+    for (var i = headerIdx + 1; i < end; i++) {
+      if (rawEmailLines[i] === boundary)
+        splits.push(i);
+      if (rawEmailLines[i] === closeBoundary) {
+        splits.push(i);
+        break;
+      }
+    }
+    if (splits.length < 2) {
+      console.error("Invalid multipart MIME format");
+      return;
+    }
+    for (var i = 0; i + 1 < splits.length; i++)
+      getLeafTypes(rawEmailLines, splits[i] + 1, splits[i + 1], resList);
+  } else {
+    resList.push({
+      start: headerIdx + 1,
+      end: end,
+      type: mimeType
+    });
+  }
+}
+
+// given a string that starts with "content-type", get its content type
+function parseMimeType(contentType) {
+  const trimStart = "content-type:".length;
+  contentType = contentType.substring(trimStart);
+  const semicolonIdx = contentType.indexOf(";");
+  if (semicolonIdx !== -1)
+    contentType = contentType.substring(0, semicolonIdx);
+  return contentType.trim();
+}
+
+function parseMimeBoundary(contentType) {
+  const targ = "boundary=";
+  const boundaryIdx = contentType.toLowerCase().indexOf(targ);
+  contentType = contentType.substring(boundaryIdx + targ.length);
+  const semicolonIdx = contentType.indexOf(";");
+  if (semicolonIdx !== -1)
+    contentType = contentType.substring(0, semicolonIdx);
+  // if it's like content-type: "asd" return asd
+  if (contentType[0] === "\"" && contentType[contentType.length - 1] === "\"")
+    return contentType.substring(1, contentType.length - 1);
+  return contentType;
 }
 
 function upload(file) {
