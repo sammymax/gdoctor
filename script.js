@@ -66,15 +66,13 @@ function signin(event) {
 }
 
 function searchEmails() {
-  _searchEmails(query_input.value);
-}
+  const query = query_input.value;
 
-function _searchEmails(query) {
-  var getPageOfMessages = function(request, result) {
-    request.execute(function(resp) {
-      result = result.concat(resp.messages);
+  const getPageOfMessages = function(request, result) {
+    request.then(resp => {
+      result = result.concat(resp.result.messages);
       console.log(result.length);
-      var nextPageToken = resp.nextPageToken;
+      const nextPageToken = resp.result.nextPageToken;
       if (nextPageToken) {
         request = gapi.client.gmail.users.messages.list({
           'userId': 'me',
@@ -85,7 +83,7 @@ function _searchEmails(query) {
       }
     });
   };
-  var initialRequest = gapi.client.gmail.users.messages.list({
+  const initialRequest = gapi.client.gmail.users.messages.list({
     'userId': 'me',
     'q': query
   });
