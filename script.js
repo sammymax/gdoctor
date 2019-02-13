@@ -300,7 +300,8 @@ function doctorEmail2(rawLines, links) {
       const newLines = chunk(btoa(body + allLinks), 76, "");
       rawLines.splice(leaves[i].start, leaves[i].end - leaves[i].start, ...newLines);
     } else if (encoding == "quoted") {
-      const allLinks = linkHtmls.join('');
+      // replace equals sign with escaped equals sign
+      const allLinks = linkHtmls.join('<br>').replace(/=/g, "=3D");
       const newLines = chunk(allLinks, 75, "=");
       newLines.unshift("");
       rawLines.splice(leaves[i].end, 0, ...newLines);
