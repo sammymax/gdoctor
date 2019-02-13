@@ -1,6 +1,7 @@
 const CLIENT_ID = "823146793082-7lgsb7a22pdeilk7vbb8k9ptp7jnfgsm.apps.googleusercontent.com";
 const SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/gmail.insert",
   "https://www.googleapis.com/auth/gmail.readonly",
 ].join(" ");
 const DISCOVERY_DOCS = [
@@ -73,14 +74,14 @@ function searchEmails() {
       result = result.concat(resp.result.messages);
       console.log(result.length);
       const nextPageToken = resp.result.nextPageToken;
-      if (nextPageToken) {
-        request = gapi.client.gmail.users.messages.list({
-          'userId': 'me',
-          'pageToken': nextPageToken,
-          'q': query
-        });
-        getPageOfMessages(request, result);
-      } else
+      //if (nextPageToken) {
+      //  request = gapi.client.gmail.users.messages.list({
+      //    'userId': 'me',
+      //    'pageToken': nextPageToken,
+      //    'q': query
+      //  });
+      //  getPageOfMessages(request, result);
+      //} else
         processEmails(result);
     });
   };
@@ -130,10 +131,11 @@ function processEmails(emailList) {
   msgPromise = batcher(idx => queryMsg(emailList[idx]["id"]));
   threadPromise = batcher(idx => queryThread(emailList[idx]["threadId"]));
   msgPromise.then(res => {
+    console.log(res[0]);
     rawBodySubstitute(emailFromBase64(res[0].raw));
-    threadPromise.then(res2 => {
-      console.log(res2);
-    });
+    //threadPromise.then(res2 => {
+    //  console.log(res2);
+    //});
   });
 }
 
@@ -146,11 +148,26 @@ function emailToBase64(raw) {
 }
 
 function rawBodySubstitute(rawEmail) {
-  lines = rawEmail.split("\r\n");
+  var lines = rawEmail.split("\r\n");
   res = [];
   getLeafTypes(lines, 0, lines.length, res);
-  console.log(lines);
   console.log(res);
+  for (var i = res.length - 1; i >= 0; i--) {
+    if (res[i].type === "application/pdf")
+      lines.splice(res[i].start, res[i].end - res[i].start, "lolol");
+  }
+  newEmail = emailToBase64(lines.join("\r\n"));
+  gapi.client.request({
+    path: "gmail/v1/users/me/messages",
+    method: "POST",
+    params: { uploadType: "multipart" },
+    body: {
+      raw: newEmail
+    }
+  }).then(
+    resp => console.log("yayy, ", resp),
+    err  => console.log("errr, ", err)
+  );
 }
 
 function getLeafTypes(rawEmailLines, start, end, resList) {
