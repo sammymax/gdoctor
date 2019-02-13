@@ -139,10 +139,12 @@ function processEmails(emailList) {
         batchGetMessages(emailSlice).then(messageRaws => {
           batchMakeFolders(emailSlice, ROOT_ID).then(msgToFolder => {
             batchUploadAttachments(messageRaws, msgToFolder).then(resp => {
+              batchAddEmails(resp).then(resp => {
               //if (startIdx + BATCH_SZ < emailList.length)
               //  singleBatch(startIdx + BATCH_SZ);
               //else
                 resolve(resp);
+              });
             });
           });
         });
@@ -234,6 +236,25 @@ function batchUploadAttachments(messageRaws, msgToFolder) {
       });
     }
     singleBatch(0);
+  });
+}
+
+function batchAddEmails(messageRaws) {
+  return new Promise((resolve, reject) => {
+    const batch = gapi.client.newBatch();
+    for (var i = 0; i < messageRaws.length; i++) {
+      batch.add(gapi.client.request({
+        path: "gmail/v1/users/me/messages",
+        method: "POST",
+        params: { uploadType: "multipart" },
+        body: {
+          raw: emailToBase64(messageRaws[i].join("\r\n"))
+        }
+      }));
+    }
+    batch.then(respMap => {
+      resolve(respMap);
+    });
   });
 }
 
