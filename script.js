@@ -201,27 +201,36 @@ function batchMakeFolders(messageIds, rootFolderId) {
 
 function batchUploadAttachments(messageRaws, msgToFolder) {
   return new Promise((resolve, reject) => {
-    const batch = gapi.client.newBatch();
-    doctorEmail(messageRaws[0].raw, batch, msgToFolder[messageRaws[0].id]);
-    //const batch = gapi.client.newBatch();
-    //const doctoredRaws = [];
-    //for (var i = 0; i < messageRaws.length; i++) {
-    //  const folderId = msgToFolder[messageRaws[i].id];
-    //  doctoredRaws.push(doctorEmail(messageRaws[i].raw, batch, folderId));
-    //}
+    const doctoredRaws = [];
+    const linkList = [];
 
-    //batch.then(respMap => {
-    //  resolve({
-    //    doctoredRaws: doctoredRaws,
-    //    respMap: respMap
-    //  });
-    //}, err => {
-    //  console.log("batchup err ", err);
-    //});
+    const singleEmail = (messageIdx) => {
+      const messageRaw = messageRaws[messageIdx];
+      const batch = gapi.client.newBatch();
+      const folderId = msgToFolder[messageRaw.id];
+
+      const reqs = [];
+      doctoredRaws.push(doctorEmail(messageRaw.raw, reqs, folderId));
+      Promise.all(reqs).then(resp => {
+        const links = [];
+        for (var i = 0; i < resp.length; i++)
+          links.push(resp[i].result.webViewLink);
+        linkList.push(links);
+
+        if (messageIdx + 1 === messageRaws.length)
+          resolve({
+            doctoredRaws: doctoredRaws,
+            linkList: linkList
+          });
+        else
+          singleEmail(messageIdx + 1);
+      });
+    }
+    singleEmail(0);
   });
 }
 
-function doctorEmail(rawEmail, batchObj, folderId) {
+function doctorEmail(rawEmail, reqs, folderId) {
   var rawLines = emailFromBase64(rawEmail).split("\r\n");
   const leaves = [];
   getLeafTypes(rawLines, 0, rawLines.length, leaves);
@@ -231,12 +240,7 @@ function doctorEmail(rawEmail, batchObj, folderId) {
       const removed = rawLines.splice(leaves[i].start, leaves[i].end - leaves[i].start, "gdoctored");
       const fileName = `attachment${i}.${mimeReplacements[leaves[i].type][0]}`;
       const mimeType = mimeReplacements[leaves[i].type][1];
-      //batchObj.add(uploadBase64(removed.join(''), mimeType, fileName, folderId));
-      uploadBase64(removed.join(''), mimeType, fileName, folderId).then(resp => {
-        console.log("ya ", resp);
-      }, err => {
-        console.log("er ", err);
-      });
+      reqs.push(uploadBase64(removed.join(''), mimeType, fileName, folderId));
     }
   }
   return rawLines;
