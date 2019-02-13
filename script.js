@@ -14,7 +14,36 @@ const signin_status = document.getElementById("signin-status");
 const signin_button = document.getElementById("signin-button");
 const query_input = document.getElementById("query-input");
 
-var mimeReplacements = {};
+const mimeReplacements = {
+  "application/msword": ["doc", "application/vnd.google-apps.document"],
+  "application/pdf": ["pdf", "application/vnd.google-apps.document"],
+  "application/vnd.ms-word.document.macroenabled.12": ["docm", "application/vnd.google-apps.document"],
+  "application/vnd.ms-word.template.macroenabled.12": ["dotm", "application/vnd.google-apps.document"],
+  "application/vnd.oasis.opendocument.text": ["odt", "application/vnd.google-apps.document"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ["docx", "application/vnd.google-apps.document"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.template": ["dotx", "application/vnd.google-apps.document"],
+  "application/vnd.sun.xml.writer": ["sxw", "application/vnd.google-apps.document"],
+  "application/x-vnd.oasis.opendocument.text": ["odt", "application/vnd.google-apps.document"],
+
+  "application/vnd.ms-powerpoint": ["ppt", "application/vnd.google-apps.presentation"],
+  "application/vnd.ms-powerpoint.presentation.macroenabled.12": ["pptm", "application/vnd.google-apps.presentation"],
+  "application/vnd.ms-powerpoint.slideshow.macroenabled.12": ["ppsm", "application/vnd.google-apps.presentation"],
+  "application/vnd.ms-powerpoint.template.macroenabled.12": ["potm", "application/vnd.google-apps.presentation"],
+  "application/vnd.oasis.opendocument.presentation": ["odp", "application/vnd.google-apps.presentation"],
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": ["pptx", "application/vnd.google-apps.presentation"],
+  "application/vnd.openxmlformats-officedocument.presentationml.slideshow": ["ppsx", "application/vnd.google-apps.presentation"],
+  "application/vnd.openxmlformats-officedocument.presentationml.template": ["potx", "application/vnd.google-apps.presentation"],
+  "application/x-vnd.oasis.opendocument.presentation": ["odp", "application/vnd.google-apps.presentation"],
+
+  "image/bmp":    ["bmp", "application/vnd.google-apps.document"],
+  "image/gif":    ["gif", "application/vnd.google-apps.document"],
+  "image/jpeg":   ["jpg", "application/vnd.google-apps.document"],
+  "image/jpg":    ["jpg", "application/vnd.google-apps.document"],
+  "image/pjpeg":  ["jpg", "application/vnd.google-apps.document"],
+  "image/png":    ["png", "application/vnd.google-apps.document"],
+  "image/x-bmp":  ["bmp", "application/vnd.google-apps.document"],
+  "image/x-png":  ["bmp", "application/vnd.google-apps.document"],
+};
 
 function executePromisesSequentially(promiseList) {
   _executePromisesSequentially(promiseList, 0);
@@ -56,7 +85,6 @@ function updateSigninStatus(isSignedIn) {
   if (!isSignedIn) return;
 
   stage = 1;
-  getMimeReplacements();
 
   signin_status.innerHTML = "Signed in";
   signin_button.style.display = "none";
@@ -153,9 +181,11 @@ function rawBodySubstitute(rawEmail) {
   getLeafTypes(lines, 0, lines.length, res);
   console.log(res);
   for (var i = res.length - 1; i >= 0; i--) {
-    if (res[i].type === "application/pdf") {
+    if (res[i].type in mimeReplacements) {
       const removed = lines.splice(res[i].start, res[i].end - res[i].start, "lolol");
-      uploadBase64(removed.join(''), res[i].type, "hello");
+      const fileExtension = mimeReplacements[res[i].type][0];
+      const mimeType = mimeReplacements[res[i].type][1];
+      uploadBase64(removed.join(''), mimeType, `attachment${i}.${fileExtension}`);
     }
   }
   newEmail = emailToBase64(lines.join("\r\n"));
@@ -252,35 +282,8 @@ function parseMimeBoundary(contentType) {
   return contentType;
 }
 
-function getMimeReplacements() {
-  if (stage !== 1) {
-    console.log("not signed in, can't do it");
-    return;
-  }
-  gapi.client.drive.about.get({
-    fields: "importFormats"
-  }).then(
-    response => {
-      resp = response.result.importFormats;
-      mimeReplacements = {};
-      for (var key in resp) {
-        if (Array.isArray(resp[key]) && resp[key].length === 1)
-          mimeReplacements[key] = resp[key][0];
-        else
-          console.log("Strange import format: ", key, resp[key]);
-      }
-      if (stage === 1) stage = 2;
-    },
-    err => {
-      console.error("err: ", err)
-    }
-  );
-}
-
 function uploadBase64(base64File, mimeType, filename) {
   const BOUNDARY = "--ASD_ASD_ASD_123456789_987654321_YUH_YUH";
-  if (mimeType in mimeReplacements)
-    mimeType = mimeReplacements[mimeType];
 
   gapi.client.request({
     path: "upload/drive/v3/files",
