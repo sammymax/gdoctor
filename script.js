@@ -153,8 +153,10 @@ function rawBodySubstitute(rawEmail) {
   getLeafTypes(lines, 0, lines.length, res);
   console.log(res);
   for (var i = res.length - 1; i >= 0; i--) {
-    if (res[i].type === "application/pdf")
-      lines.splice(res[i].start, res[i].end - res[i].start, "lolol");
+    if (res[i].type === "application/pdf") {
+      const removed = lines.splice(res[i].start, res[i].end - res[i].start, "lolol");
+      uploadBase64(removed.join(''), res[i].type, "hello");
+    }
   }
   newEmail = emailToBase64(lines.join("\r\n"));
   gapi.client.request({
@@ -250,14 +252,6 @@ function parseMimeBoundary(contentType) {
   return contentType;
 }
 
-function upload(file) {
-  if (stage !== 2) {
-    console.log("not ready");
-    return;
-  }
-  upload_file(file);
-}
-
 function getMimeReplacements() {
   if (stage !== 1) {
     console.log("not signed in, can't do it");
@@ -283,38 +277,23 @@ function getMimeReplacements() {
   );
 }
 
-function upload_file(file) {
-  console.log("uploading");
-  console.log(file);
+function uploadBase64(base64File, mimeType, filename) {
   const BOUNDARY = "--ASD_ASD_ASD_123456789_987654321_YUH_YUH";
-  readFile(file).then(
-    base64File => {
-      var mimeType = file.type;
-      if (mimeType in mimeReplacements)
-        mimeType = mimeReplacements[mimeType];
+  if (mimeType in mimeReplacements)
+    mimeType = mimeReplacements[mimeType];
 
-      gapi.client.request({
-        path: "upload/drive/v3/files",
-        method: "POST",
-        params: { uploadType: "multipart" },
-        headers: {
-          "Content-type": `multipart/related; boundary=${BOUNDARY}`,
-        },
-        body: formatMultipartBody("ayo2.png", mimeType, base64File, BOUNDARY)
-      }).then(
-        response => console.log("upload success ", response),
-        err => console.error("upload error ", err)
-      );
-    }
+  gapi.client.request({
+    path: "upload/drive/v3/files",
+    method: "POST",
+    params: { uploadType: "multipart" },
+    headers: {
+      "Content-type": `multipart/related; boundary=${BOUNDARY}`,
+    },
+    body: formatMultipartBody(filename, mimeType, base64File, BOUNDARY)
+  }).then(
+    response => console.log("upload success ", response),
+    err => console.error("upload error ", err)
   );
-}
-
-function readFile(file) {
-  const fr = new FileReader();
-  return new Promise((resolve, reject) => {
-    fr.onload = (event) => resolve(btoa(fr.result));
-    fr.readAsBinaryString(file);
-  });
 }
 
 function formatMultipartBody(fileName, fileType, base64Data, BOUNDARY) {
