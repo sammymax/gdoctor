@@ -201,32 +201,36 @@ function batchMakeFolders(messageIds, rootFolderId) {
 
 function batchUploadAttachments(messageRaws, msgToFolder) {
   return new Promise((resolve, reject) => {
+    // doctoredRaws in order accordin to messageRaws
+    // linksToAdd is msgId -> [ url list ]
     const doctoredRaws = [];
-    const linkList = [];
+    const linksToAdd = new Array(messageRaws.length).fill([]);
 
-    const singleEmail = (messageIdx) => {
-      const messageRaw = messageRaws[messageIdx];
-      const batch = gapi.client.newBatch();
-      const folderId = msgToFolder[messageRaw.id];
+    const folderToIdx = {};
+    const reqs = [];
 
-      const reqs = [];
-      doctoredRaws.push(doctorEmail(messageRaw.raw, reqs, folderId));
-      Promise.all(reqs).then(resp => {
-        const links = [];
-        for (var i = 0; i < resp.length; i++)
-          links.push(resp[i].result.webViewLink);
-        linkList.push(links);
+    for (var i = 0; i < messageRaws.length; i++) {
+      const cur = messageRaws[i];
+      folderToIdx[msgToFolder[cur.id]] = i;
+      doctoredRaws.push(doctorEmail(cur.raw, reqs, msgToFolder[cur.id]));
+    }
 
-        if (messageIdx + 1 === messageRaws.length)
-          resolve({
-            doctoredRaws: doctoredRaws,
-            linkList: linkList
-          });
+    const BATCH_SZ = 5;
+
+    const singleBatch = (startIdx) => {
+      Promise.all(reqs.slice(startIdx, startIdx + BATCH_SZ)).then(resp => {
+        for (var i = 0; i < resp.length; i++) {
+          const cur = resp[i].result;
+          linksToAdd[folderToIdx[cur.parents[0]]].push(cur.webViewLink);
+        }
+
+        if (startIdx + BATCH_SZ >= messageRaws.length)
+          resolve(doctoredRaws);
         else
-          singleEmail(messageIdx + 1);
+          singleBatch(startIdx + BATCH_SZ);
       });
     }
-    singleEmail(0);
+    singleBatch(0);
   });
 }
 
