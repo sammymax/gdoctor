@@ -121,50 +121,125 @@ function searchEmails() {
 }
 
 function processEmails(emailList) {
-  const queryMsg = (msgId) => {
-    return gapi.client.gmail.users.messages.get({
-      userId: "me",
-      id: msgId,
-      format: "raw"
-    });
-  };
-  const queryThread = (threadId) => {
-    return gapi.client.gmail.users.threads.get({
-      userId: "me",
-      id: threadId,
-    });
-  };
+  gapi.client.drive.files.create({
+    resource: {
+      name: "gdoctor",
+      mimeType: "application/vnd.google-apps.folder"
+    },
+    fields: "id"
+  }).then(resp => {
+    const BATCH_SZ = 10;
+    const ROOT_ID = resp.result.id;
 
-  const BATCH_SZ = 50;
-
-  const batcher = (idxToReq) => {
-    return new Promise((resolve, reject) => {
-      const res = [];
+    const mainPromise = new Promise((resolve, reject) => {
       const singleBatch = (startIdx) => {
-        const batch = gapi.client.newBatch();
-        for (var i = 0; startIdx + i < emailList.length && i < BATCH_SZ; i++)
-          batch.add(idxToReq(startIdx + i));
-        batch.then(respMap => {
-          for (var key in respMap.result)
-            res.push(respMap.result[key].result);
-          if (startIdx + BATCH_SZ < emailList.length)
-            singleBatch(startIdx + BATCH_SZ);
-          else
-            resolve(res);
+        emailSlice = emailList.slice(startIdx, startIdx + BATCH_SZ);
+        for (var i = 0; i < emailSlice.length; i++)
+          emailSlice[i] = emailSlice[i].id;
+        batchGetMessages(emailSlice).then(messageRaws => {
+          batchMakeFolders(emailSlice, ROOT_ID).then(msgToFolder => {
+            batchUploadAttachments(messageRaws, msgToFolder).then(resp => {
+              //if (startIdx + BATCH_SZ < emailList.length)
+              //  singleBatch(startIdx + BATCH_SZ);
+              //else
+                resolve(resp);
+            });
+          });
         });
-      }
+      };
       singleBatch(0);
     });
-  }
-  msgPromise = batcher(idx => queryMsg(emailList[idx]["id"]));
-  threadPromise = batcher(idx => queryThread(emailList[idx]["threadId"]));
-  msgPromise.then(res => {
-    console.log(res[0]);
-    rawBodySubstitute(emailFromBase64(res[0].raw));
-    //threadPromise.then(res2 => {
-    //  console.log(res2);
+
+    mainPromise.then(resp => {
+      console.log("main promise done! ", resp);
+    });
+  });
+}
+
+function batchGetMessages(messageIds) {
+  return new Promise((resolve, reject) => {
+    const batch = gapi.client.newBatch();
+    for (var i = 0; i < messageIds.length; i++) {
+      batch.add(gapi.client.gmail.users.messages.get({
+        userId: "me",
+        id: messageIds[i],
+        format: "raw",
+      }));
+    }
+    batch.then(respMap => {
+      const res = [];
+      for (var key in respMap.result)
+        res.push(respMap.result[key].result);
+      resolve(res);
+    });
+  });
+}
+
+function batchMakeFolders(messageIds, rootFolderId) {
+  return new Promise((resolve, reject) => {
+    const batch = gapi.client.newBatch();
+    for (var i = 0; i < messageIds.length; i++) {
+      batch.add(gapi.client.drive.files.create({
+        resource: {
+          name: messageIds[i],
+          mimeType: "application/vnd.google-apps.folder",
+          parents: [rootFolderId]
+        },
+        fields: "id, name"
+      }));
+    }
+    batch.then(respMap => {
+      msgToFolder = {};
+      for (var key in respMap.result) {
+        const res = respMap.result[key].result;
+        msgToFolder[res.name] = res.id;
+      }
+      resolve(msgToFolder);
+    });
+  });
+}
+
+function batchUploadAttachments(messageRaws, msgToFolder) {
+  return new Promise((resolve, reject) => {
+    const batch = gapi.client.newBatch();
+    doctorEmail(messageRaws[0].raw, batch, msgToFolder[messageRaws[0].id]);
+    //const batch = gapi.client.newBatch();
+    //const doctoredRaws = [];
+    //for (var i = 0; i < messageRaws.length; i++) {
+    //  const folderId = msgToFolder[messageRaws[i].id];
+    //  doctoredRaws.push(doctorEmail(messageRaws[i].raw, batch, folderId));
+    //}
+
+    //batch.then(respMap => {
+    //  resolve({
+    //    doctoredRaws: doctoredRaws,
+    //    respMap: respMap
+    //  });
+    //}, err => {
+    //  console.log("batchup err ", err);
     //});
   });
+}
+
+function doctorEmail(rawEmail, batchObj, folderId) {
+  var rawLines = emailFromBase64(rawEmail).split("\r\n");
+  const leaves = [];
+  getLeafTypes(rawLines, 0, rawLines.length, leaves);
+
+  for (var i = leaves.length - 1; i >= 0; i--) {
+    if (leaves[i].type in mimeReplacements) {
+      const removed = rawLines.splice(leaves[i].start, leaves[i].end - leaves[i].start, "gdoctored");
+      const fileName = `attachment${i}.${mimeReplacements[leaves[i].type][0]}`;
+      const mimeType = mimeReplacements[leaves[i].type][1];
+      //batchObj.add(uploadBase64(removed.join(''), mimeType, fileName, folderId));
+      uploadBase64(removed.join(''), mimeType, fileName, folderId).then(resp => {
+        console.log("ya ", resp);
+      }, err => {
+        console.log("er ", err);
+      });
+    }
+  }
+  return rawLines;
 }
 
 function emailFromBase64(b64url) {
@@ -173,33 +248,6 @@ function emailFromBase64(b64url) {
 
 function emailToBase64(raw) {
   return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_');
-}
-
-function rawBodySubstitute(rawEmail) {
-  var lines = rawEmail.split("\r\n");
-  res = [];
-  getLeafTypes(lines, 0, lines.length, res);
-  console.log(res);
-  for (var i = res.length - 1; i >= 0; i--) {
-    if (res[i].type in mimeReplacements) {
-      const removed = lines.splice(res[i].start, res[i].end - res[i].start, "lolol");
-      const fileExtension = mimeReplacements[res[i].type][0];
-      const mimeType = mimeReplacements[res[i].type][1];
-      uploadBase64(removed.join(''), mimeType, `attachment${i}.${fileExtension}`);
-    }
-  }
-  newEmail = emailToBase64(lines.join("\r\n"));
-  gapi.client.request({
-    path: "gmail/v1/users/me/messages",
-    method: "POST",
-    params: { uploadType: "multipart" },
-    body: {
-      raw: newEmail
-    }
-  }).then(
-    resp => console.log("yayy, ", resp),
-    err  => console.log("errr, ", err)
-  );
 }
 
 function getLeafTypes(rawEmailLines, start, end, resList) {
@@ -282,41 +330,70 @@ function parseMimeBoundary(contentType) {
   return contentType;
 }
 
-function uploadBase64(base64File, mimeType, filename) {
+function uploadBase64(base64File, mimeType, filename, parentId) {
   const BOUNDARY = "--ASD_ASD_ASD_123456789_987654321_YUH_YUH";
+  const metadata = {
+    name: filename,
+    mimeType: mimeType,
+    parents: [parentId]
+  };
 
-  gapi.client.request({
+  return gapi.client.request({
     path: "upload/drive/v3/files",
     method: "POST",
-    params: { uploadType: "multipart" },
+    params: {
+      uploadType: "multipart",
+      fields: "parents, webViewLink"
+    },
     headers: {
       "Content-type": `multipart/related; boundary=${BOUNDARY}`,
     },
-    body: formatMultipartBody(filename, mimeType, base64File, BOUNDARY)
-  }).then(
-    response => console.log("upload success ", response),
-    err => console.error("upload error ", err)
-  );
+    body: formatMultipartBody(mimeType, metadata, base64File, BOUNDARY)
+  });
 }
 
-function formatMultipartBody(fileName, fileType, base64Data, BOUNDARY) {
+function formatMultipartBody(mimeType, metadata, base64Data, BOUNDARY) {
   // thank you to:
   // 1. https://stackoverflow.com/questions/51559203
   // 2. https://stackoverflow.com/questions/33842963
   const delimiter = "\r\n--" + BOUNDARY + "\r\n";
   const closeDelimiter = "\r\n--" + BOUNDARY + "--";
-  const metadata = {
-    name: fileName, mimeType: fileType || 'application/octet-stream'
-  };
   const body =
     delimiter +
     'Content-Type: application/json\r\n\r\n' +
     JSON.stringify(metadata) +
     delimiter +
-    'Content-Type: ' + fileType + '\r\n' +
+    'Content-Type: ' + mimeType + '\r\n' +
     'Content-Transfer-Encoding: base64\r\n' +
     '\r\n' +
     base64Data +
     closeDelimiter;
   return body;
+}
+
+function rawBodySubstitute(rawEmail) {
+  var lines = rawEmail.split("\r\n");
+  res = [];
+  getLeafTypes(lines, 0, lines.length, res);
+  console.log(res);
+  for (var i = res.length - 1; i >= 0; i--) {
+    if (res[i].type in mimeReplacements) {
+      const removed = lines.splice(res[i].start, res[i].end - res[i].start, "lolol");
+      const fileExtension = mimeReplacements[res[i].type][0];
+      const mimeType = mimeReplacements[res[i].type][1];
+      uploadBase64(removed.join(''), mimeType, `attachment${i}.${fileExtension}`);
+    }
+  }
+  newEmail = emailToBase64(lines.join("\r\n"));
+  gapi.client.request({
+    path: "gmail/v1/users/me/messages",
+    method: "POST",
+    params: { uploadType: "multipart" },
+    body: {
+      raw: newEmail
+    }
+  }).then(
+    resp => console.log("yayy, ", resp),
+    err  => console.log("errr, ", err)
+  );
 }
