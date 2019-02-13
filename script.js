@@ -206,12 +206,14 @@ function batchUploadAttachments(messageRaws, msgToFolder) {
     // doctoredRaws in order according to messageRaws
     // linksToAdd is msgId -> [ url list ]
     const doctoredRaws = [];
-    const linksToAdd = new Array(messageRaws.length).fill([]);
+    const linksToAdd = [];
 
     const folderToIdx = {};
     const reqs = [];
 
     for (var i = 0; i < messageRaws.length; i++) {
+      linksToAdd.push([]);
+
       const cur = messageRaws[i];
       folderToIdx[msgToFolder[cur.id]] = i;
       doctoredRaws.push(doctorEmail(cur.raw, reqs, msgToFolder[cur.id]));
@@ -226,7 +228,7 @@ function batchUploadAttachments(messageRaws, msgToFolder) {
           linksToAdd[folderToIdx[cur.parents[0]]].push(cur.webViewLink);
         }
 
-        if (startIdx + BATCH_SZ >= messageRaws.length) {
+        if (startIdx + BATCH_SZ >= reqs.length) {
           for (var i = 0; i < messageRaws.length; i++)
             doctorEmail2(doctoredRaws[i], linksToAdd[i]);
           resolve(doctoredRaws);
