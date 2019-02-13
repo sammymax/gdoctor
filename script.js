@@ -201,7 +201,7 @@ function batchMakeFolders(messageIds, rootFolderId) {
 
 function batchUploadAttachments(messageRaws, msgToFolder) {
   return new Promise((resolve, reject) => {
-    // doctoredRaws in order accordin to messageRaws
+    // doctoredRaws in order according to messageRaws
     // linksToAdd is msgId -> [ url list ]
     const doctoredRaws = [];
     const linksToAdd = new Array(messageRaws.length).fill([]);
@@ -224,10 +224,13 @@ function batchUploadAttachments(messageRaws, msgToFolder) {
           linksToAdd[folderToIdx[cur.parents[0]]].push(cur.webViewLink);
         }
 
-        if (startIdx + BATCH_SZ >= messageRaws.length)
+        if (startIdx + BATCH_SZ >= messageRaws.length) {
+          for (var i = 0; i < messageRaws.length; i++)
+            doctorEmail2(doctoredRaws[i], linksToAdd[i]);
           resolve(doctoredRaws);
-        else
+        } else {
           singleBatch(startIdx + BATCH_SZ);
+        }
       });
     }
     singleBatch(0);
@@ -248,6 +251,51 @@ function doctorEmail(rawEmail, reqs, folderId) {
     }
   }
   return rawLines;
+}
+
+function doctorEmail2(rawLines, links) {
+  const leaves = [];
+  getLeafTypes(rawLines, 0, rawLines.length, leaves);
+
+  const linkToHtml = (url, text) => {
+    return `<a href="${url}">${text}</a>`;
+  };
+
+  const linkHtmls = new Array(links.length);
+  for (var i = 0; i < links.length; i++)
+    linkHtmls[i] = linkToHtml(links[i], `Attachment ${i}`);
+
+  for (var i = 0; i < leaves.length; i++) {
+    if (leaves[i].type !== "text/html") continue;
+    const encoding = leaves[i].transferEncoding;
+    const bodySlice = rawLines.slice(leaves[i].start, leaves[i].end);
+
+    // we only handle base64, quoted, 7bit, 8bit
+    if (encoding === "base64") {
+      const body = atob(bodySlice.join(''));
+      const allLinks = linkHtmls.join('<br>');
+      const newLines = chunk(btoa(body + allLinks), 76, "");
+      rawLines.splice(leaves[i].start, leaves[i].end - leaves[i].start, ...newLines);
+    } else if (encoding == "quoted") {
+      const allLinks = linkHtmls.join('');
+      const newLines = chunk(allLinks, 75, "=");
+      newLines.unshift("");
+      rawLines.splice(leaves[i].end, 0, ...newLines);
+    } else {
+      rawLines.splice(leaves[i].end, 0, ...linkHtmls, "");
+    }
+  }
+}
+
+function chunk(str, size, suffix) {
+  const numChunks = Math.ceil(str.length / size);
+  const chunks = new Array(numChunks);
+
+  for (let i = 0, o = 0; i < numChunks; ++i, o += size) {
+    chunks[i] = str.substr(o, size);
+    if (i + 1 < numChunks) chunks[i] += suffix;
+  }
+  return chunks;
 }
 
 function emailFromBase64(b64url) {
@@ -274,20 +322,13 @@ function getLeafTypes(rawEmailLines, start, end, resList) {
   for (var i = start; i < headerIdx; i++) {
     // https://stackoverflow.com/questions/6143549: headers not case sensitive
     if (rawEmailLines[i].toLowerCase().startsWith("content-type")) {
-      contentType = rawEmailLines[i];
-      for (var j = i + 1; j < headerIdx; j++) {
-        // https://tools.ietf.org/html/rfc2822, section 2.2.3: header unfolding
-        if (rawEmailLines[j][0] === " " || rawEmailLines[j][0] === "\t")
-          contentType += rawEmailLines[j];
-        else
-          break;
-      }
+      contentType = getHeaderLine(rawEmailLines, i);
       break;
     }
   }
 
   const mimeType = parseMimeType(contentType);
-  if (mimeType.toLowerCase().startsWith("multipart")) {
+  if (mimeType.startsWith("multipart")) {
     const boundary = "--" + parseMimeBoundary(contentType);
     const closeBoundary = boundary + "--";
 
@@ -310,19 +351,21 @@ function getLeafTypes(rawEmailLines, start, end, resList) {
     resList.push({
       start: headerIdx + 1,
       end: end,
-      type: mimeType
+      type: mimeType,
+      transferEncoding: parseTransferEncoding(rawEmailLines, start, headerIdx)
     });
   }
 }
 
 // given a string that starts with "content-type", get its content type
+// return it in lower case
 function parseMimeType(contentType) {
   const trimStart = "content-type:".length;
   contentType = contentType.substring(trimStart);
   const semicolonIdx = contentType.indexOf(";");
   if (semicolonIdx !== -1)
     contentType = contentType.substring(0, semicolonIdx);
-  return contentType.trim();
+  return contentType.trim().toLowerCase();
 }
 
 function parseMimeBoundary(contentType) {
@@ -336,6 +379,37 @@ function parseMimeBoundary(contentType) {
   if (contentType[0] === "\"" && contentType[contentType.length - 1] === "\"")
     return contentType.substring(1, contentType.length - 1);
   return contentType;
+}
+
+// our search range is [start, end)
+function parseTransferEncoding(rawEmailLines, start, end) {
+  for (var i = start; i < end; i++) {
+    // https://www.w3.org/Protocols/rfc1341/5_Content-Transfer-Encoding.html
+    if (rawEmailLines[i].toLowerCase().startsWith("content-transfer-encoding")) {
+      const transferLine = getHeaderLine(rawEmailLines, i).toLowerCase();
+      if (transferLine.includes("base64")) return "base64";
+      if (transferLine.includes("quoted-printable")) return "quoted";
+      if (transferLine.includes("7bit")) return "7bit";
+      if (transferLine.includes("8bit")) return "8bit";
+      if (transferLine.includes("binary")) return "binary";
+      return null;
+    }
+  }
+  return null;
+}
+
+// https://tools.ietf.org/html/rfc2822, section 2.2.3: header unfolding
+// begin at line start and go until we find a line that doesn't start with whitespace
+function getHeaderLine(rawEmailLines, start) {
+  var res = rawEmailLines[start];
+  for (var i = start + 1; ; i++) {
+    const cur = rawEmailLines[i];
+    if (cur.length > 0 && (cur[0] === " " || cur[0] === "\t"))
+      res += rawEmailLines[i];
+    else
+      return res;
+  }
+  return res;
 }
 
 function uploadBase64(base64File, mimeType, filename, parentId) {
