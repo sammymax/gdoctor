@@ -364,9 +364,16 @@ function doctorEmail(rawEmail, reqs, folderId) {
   for (var i = leaves.length - 1; i >= 0; i--) {
     if (leaves[i].type in mimeReplacements) {
       const removed = rawLines.splice(leaves[i].start, leaves[i].end - leaves[i].start, "gdoctored");
-      const fileName = `attachment${i}.${mimeReplacements[leaves[i].type][0]}`;
+      const fileExt = mimeReplacements[leaves[i].type][0];
+      const filename = leaves[i].filename.endsWith(fileExt) ? leaves[i].filename : `attachment${i}.${fileExt}`;
       const mimeType = mimeReplacements[leaves[i].type][1];
-      reqs.push([removed.join(''), mimeType, fileName, folderId]);
+      reqs.push([removed.join(''), mimeType, filename, folderId]);
+    } else if (leaves[i].type !== "text/plain" && leaves[i].type !== "text/html") {
+      // it's definitely not the email body since not text or html
+      // we can't convert it to Google Doc, so just upload it
+      const removed = rawLines.splice(leaves[i].start, leaves[i].end - leaves[i].start, "gdoctored");
+      const filename = (leaves[i].filename.length > 0) ? leaves[i].filename : `attachment${i}`;
+      reqs.push([removed.join(''), leaves[i].type, filename, folderId]);
     }
   }
   return rawLines;
@@ -450,7 +457,7 @@ function getLeafTypes(rawEmailLines, start, end, resList) {
     }
   }
 
-  const mimeType = parseMimeType(contentType);
+  var mimeType = parseMimeType(contentType);
   if (mimeType.startsWith("multipart")) {
     const boundary = "--" + parseMimeBoundary(contentType);
     const closeBoundary = boundary + "--";
@@ -471,13 +478,36 @@ function getLeafTypes(rawEmailLines, start, end, resList) {
     for (var i = 0; i + 1 < splits.length; i++)
       getLeafTypes(rawEmailLines, splits[i] + 1, splits[i + 1], resList);
   } else {
+    const filename = parseFilename(rawEmailLines, start, headerIdx);
+    // attempt to get file type from file extension if application/octet-stream
+    if (mimeType === "application/octet-stream")
+      for (var key in mimeReplacements)
+        if (filename.endsWith(mimeReplacements[key][0])) {
+          mimeType = key;
+          break;
+        }
     resList.push({
       start: headerIdx + 1,
       end: end,
       type: mimeType,
-      transferEncoding: parseTransferEncoding(rawEmailLines, start, headerIdx)
+      transferEncoding: parseTransferEncoding(rawEmailLines, start, headerIdx),
+      filename: filename
     });
   }
+}
+
+function unquoteIfNeeded(str) {
+  if (str[0] === "\"" && str[str.length - 1] === "\"")
+    return str.substring(1, str.length - 1);
+  return str;
+}
+
+// if the string contains a semicolon, remove it and all that's after it
+function trimSemicolon(str) {
+  const semicolonIdx = str.indexOf(";");
+  if (semicolonIdx !== -1)
+    return str.substring(0, semicolonIdx);
+  return str;
 }
 
 // given a string that starts with "content-type", get its content type
@@ -485,23 +515,14 @@ function getLeafTypes(rawEmailLines, start, end, resList) {
 function parseMimeType(contentType) {
   const trimStart = "content-type:".length;
   contentType = contentType.substring(trimStart);
-  const semicolonIdx = contentType.indexOf(";");
-  if (semicolonIdx !== -1)
-    contentType = contentType.substring(0, semicolonIdx);
-  return contentType.trim().toLowerCase();
+  return trimSemicolon(contentType).trim().toLowerCase();
 }
 
 function parseMimeBoundary(contentType) {
   const targ = "boundary=";
   const boundaryIdx = contentType.toLowerCase().indexOf(targ);
   contentType = contentType.substring(boundaryIdx + targ.length);
-  const semicolonIdx = contentType.indexOf(";");
-  if (semicolonIdx !== -1)
-    contentType = contentType.substring(0, semicolonIdx);
-  // if it's like content-type: "asd" return asd
-  if (contentType[0] === "\"" && contentType[contentType.length - 1] === "\"")
-    return contentType.substring(1, contentType.length - 1);
-  return contentType;
+  return unquoteIfNeeded(trimSemicolon(contentType));
 }
 
 // our search range is [start, end)
@@ -519,6 +540,22 @@ function parseTransferEncoding(rawEmailLines, start, end) {
     }
   }
   return null;
+}
+
+function parseFilename(rawEmailLines, start, end) {
+  for (var i = start; i < end; i++) {
+    // https://www.w3.org/Protocols/rfc1341/5_Content-Transfer-Encoding.html
+    if (rawEmailLines[i].toLowerCase().startsWith("content-disposition")) {
+      const disposition = getHeaderLine(rawEmailLines, i).toLowerCase();
+      const targ = "filename=";
+      const targIdx = disposition.indexOf(targ);
+      if (targIdx === -1) return "";
+      const res = trimSemicolon(disposition.substring(targIdx + targ.length));
+      if (res.length === 0) return "";
+      return unquoteIfNeeded(res);
+    }
+  }
+  return "";
 }
 
 // https://tools.ietf.org/html/rfc2822, section 2.2.3: header unfolding
