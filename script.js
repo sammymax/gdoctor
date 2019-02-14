@@ -9,11 +9,6 @@ const DISCOVERY_DOCS = [
   "https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest"
 ];
 
-var stage = 0;
-const signin_status = document.getElementById("signin-status");
-const signin_button = document.getElementById("signin-button");
-const query_input = document.getElementById("query-input");
-
 const mimeReplacements = {
   "application/msword": ["doc", "application/vnd.google-apps.document"],
   "application/pdf": ["pdf", "application/vnd.google-apps.document"],
@@ -45,6 +40,30 @@ const mimeReplacements = {
   "image/x-png":  ["bmp", "application/vnd.google-apps.document"],
 };
 
+const initializing = document.getElementById("initializing");
+const retrieving = document.getElementById("retrieving");
+
+const main_div = document.getElementById("main");
+const auth_div = document.getElementById("auth");
+const search_div = document.getElementById("search");
+const config_div = document.getElementById("config");
+
+const query_input = document.getElementById("query-input");
+const email_count = document.getElementById("email-count");
+
+const StateEnum = {
+  INIT: 0,
+  AUTH: 1,
+  SEARCH: 2,
+  SEARCHING: 3,
+  SEARCHRES: 4,
+  DOCTORING: 5
+};
+var state;
+stateChange(StateEnum.INIT);
+
+var emailList = [];
+
 function handleClientLoad() {
   gapi.load("client:auth2", initClient);
 }
@@ -55,30 +74,45 @@ function initClient() {
     discoveryDocs: DISCOVERY_DOCS,
     scope: SCOPES
   }).then(function () {
-    // Listen for sign-in state changes.
-    gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
-
-    // Handle the initial sign-in state.
-    updateSigninStatus(gapi.auth2.getAuthInstance().isSignedIn.get());
+    const signedin = gapi.auth2.getAuthInstance().isSignedIn.get();
+    stateChange(signedin ? StateEnum.SEARCH : StateEnum.AUTH);
   }, function(error) {
     console.log(JSON.stringify(error, null, 2));
   });
-}
-
-function updateSigninStatus(isSignedIn) {
-  if (!isSignedIn) return;
-
-  stage = 1;
-
-  signin_status.innerHTML = "Signed in";
-  signin_button.style.display = "none";
 }
 
 function signin(event) {
   gapi.auth2.getAuthInstance().signIn();
 }
 
+function stateChange(newState) {
+  state = newState;
+
+  initializing.style.display = (state === StateEnum.INIT) ? "block" : "none";
+  main_div.style.display = (state === StateEnum.INIT) ? "none": "block";
+  retrieving.style.display = (state === StateEnum.SEARCHING) ? "block" : "none";
+
+  if (state === StateEnum.AUTH) {
+    auth_div.setAttribute("step", "cur");
+    search_div.setAttribute("step", "after");
+    config_div.setAttribute("step", "after");
+  } else if (state === StateEnum.SEARCH) {
+    auth_div.setAttribute("step", "before");
+    search_div.setAttribute("step", "cur");
+    config_div.setAttribute("step", "after");
+  } else if (state === StateEnum.SEARCHING) {
+    auth_div.setAttribute("step", "before");
+    search_div.setAttribute("step", "before");
+    config_div.setAttribute("step", "after");
+  } else if (state === StateEnum.SEARCHRES) {
+    auth_div.setAttribute("step", "before");
+    search_div.setAttribute("step", "before");
+    config_div.setAttribute("step", "cur");
+  }
+}
+
 function searchEmails() {
+  stateChange(StateEnum.SEARCHING);
   const query = query_input.value;
 
   const getPageOfMessages = function(request, result) {
@@ -86,15 +120,18 @@ function searchEmails() {
       result = result.concat(resp.result.messages);
       console.log(result.length);
       const nextPageToken = resp.result.nextPageToken;
-      //if (nextPageToken) {
-      //  request = gapi.client.gmail.users.messages.list({
-      //    'userId': 'me',
-      //    'pageToken': nextPageToken,
-      //    'q': query
-      //  });
-      //  getPageOfMessages(request, result);
-      //} else
-        processEmails(result);
+      if (nextPageToken) {
+        request = gapi.client.gmail.users.messages.list({
+          'userId': 'me',
+          'pageToken': nextPageToken,
+          'q': query
+        });
+        getPageOfMessages(request, result);
+      } else {
+        emailList = result;
+        stateChange(StateEnum.SEARCHRES);
+        email_count.innerHTML = `<b>${result.length}</b> emails were found matching your search query.`;
+      }
     });
   };
   const initialRequest = gapi.client.gmail.users.messages.list({
@@ -104,7 +141,7 @@ function searchEmails() {
   getPageOfMessages(initialRequest, []);
 }
 
-function processEmails(emailList) {
+function processEmails() {
   gapi.client.drive.files.create({
     resource: {
       name: "gdoctor",
@@ -124,9 +161,9 @@ function processEmails(emailList) {
           batchMakeFolders(emailSlice, ROOT_ID).then(msgToFolder => {
             batchUploadAttachments(messageRaws, msgToFolder).then(resp => {
               batchAddEmails(resp).then(resp => {
-              //if (startIdx + BATCH_SZ < emailList.length)
-              //  singleBatch(startIdx + BATCH_SZ);
-              //else
+              if (startIdx + BATCH_SZ < emailList.length)
+                singleBatch(startIdx + BATCH_SZ);
+              else
                 resolve(resp);
               });
             });

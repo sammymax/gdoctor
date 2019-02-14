@@ -2,14 +2,71 @@
   <head>
     <title>GMDrive</title>
     <meta charset="utf-8"/>
+    <style>
+      body, html {
+        height: 100%;
+        margin: 0;
+      }
+      h1 {
+        margin: 0 0 20px 0;
+      }
+      div {
+        display: inline-block;
+        margin: 25px 30px;
+        box-sizing: border-box;
+      }
+      #main {
+        max-width: 800px;
+        margin: 0 auto;
+        background: #eeeeee;
+        min-height: 100%;
+      }
+      .centertext {
+        width: 200px;
+        height: 60px;
+        margin-left: -100px;
+        margin-top: -30px;
+        top: 50%;
+        left: 50%;
+        position: fixed;
+        display: none;
+      }
+      div[step="before"], div[step="after"] {
+        opacity: 0.3;
+        pointer-events: none;
+      }
+      div[step="after"] > * {
+        visibility: hidden;
+      }
+      div[step="after"] > h1 {
+        visibility: visible;
+      }
+    </style>
   </head>
   <body>
-    <h1 id="signin-status">Not Signed In</h1>
-    <button id="signin-button" onclick="signin()">Sign In</button>
-    <form onsubmit="searchEmails(); return false">
-      <input type="text" name="query" id="query-input" placeholder="Email search query">
-      <input type="submit" value="Submit">
-    </form>
+    <h1 id="initializing" class="centertext">Initializing...</h1>
+    <h1 id="retrieving" class="centertext">Retrieving...</h1>
+    <div id="main">
+      <div id="auth">
+        <h1>1. Login and grant permissions</h1>
+        <button onclick="signin()">Sign In</button>
+      </div>
+      <div id="search">
+        <h1>2. Enter Gmail search query</h1>
+        <p>Enter a query just like you would in the Gmail search box. All emails that match the search will be processed.<p>
+        <p>It is recommended to use the Gmail search box to test the search string first, and to include <b><i>has:attachment</i></b> somewhere in the search query (gdoctor has no effect on emails with no attachments).
+        <form onsubmit="searchEmails(); return false">
+          <input type="text" name="query" id="query-input" placeholder="Email search query">
+          <input type="submit" value="Submit">
+        </form>
+      </div>
+      <div id="config">
+        <h1>3. Configure doctoring options</h1>
+        <p id="email-count"></p>
+        <p>Press the button below to let gdoctor start doing its magic. <b>A reliable internet connection is strongly recommended</b> because your computer is what's downloading the attachments and submitting them to Google Drive for upload--this is a static website.</p>
+        <button onclick="processEmails()">gdoctor emails</button>
+      </div>
+    </div>
 
     <script src="script.js"></script>
     <script async defer src="https://apis.google.com/js/api.js"
