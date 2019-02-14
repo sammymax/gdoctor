@@ -3,6 +3,7 @@ const SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/gmail.insert",
   "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.labels"
 ].join(" ");
 const DISCOVERY_DOCS = [
   "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
@@ -147,46 +148,74 @@ function searchEmails() {
 
 function processEmails() {
   stateChange(StateEnum.DOCTORING);
-  gapi.client.drive.files.create({
-    resource: {
-      name: "gdoctor",
-      mimeType: "application/vnd.google-apps.folder"
-    },
-    fields: "id"
-  }).then(resp => {
-    const BATCH_SZ = 10;
-    const ROOT_ID = resp.result.id;
+  readAndCreateLabel("asd").then(labelId => {
+    gapi.client.drive.files.create({
+      resource: {
+        name: "gdoctor",
+        mimeType: "application/vnd.google-apps.folder"
+      },
+      fields: "id"
+    }).then(resp => {
+      const BATCH_SZ = 10;
+      const ROOT_ID = resp.result.id;
 
-    const mainPromise = new Promise((resolve, reject) => {
-      const singleBatch = (startIdx) => {
-        const endIdx = Math.min(startIdx + BATCH_SZ, emailList.length);
-        interbatch.innerHTML = `Processing emails ${startIdx + 1} - ${endIdx} out of ${emailList.length}`;
-        intrabatch.innerHTML = "Downloading emails";
+      const mainPromise = new Promise((resolve, reject) => {
+        const singleBatch = (startIdx) => {
+          const endIdx = Math.min(startIdx + BATCH_SZ, emailList.length);
+          interbatch.innerHTML = `Processing emails ${startIdx + 1} - ${endIdx} out of ${emailList.length}`;
+          intrabatch.innerHTML = "Downloading emails";
 
-        emailSlice = emailList.slice(startIdx, startIdx + BATCH_SZ);
-        for (var i = 0; i < emailSlice.length; i++)
-          emailSlice[i] = emailSlice[i].id;
-        batchGetMessages(emailSlice).then(messageRaws => {
-          intrabatch.innerHTML = "Making Google Drive folders";
-          batchMakeFolders(emailSlice, ROOT_ID).then(msgToFolder => {
-            intrabatch.innerHTML = "Uploading attachments to Google Drive";
-            batchUploadAttachments(messageRaws, msgToFolder).then(resp => {
-              intrabatch.innerHTML = "Uploading doctored emails to Gmail";
-              batchAddEmails(resp).then(resp => {
-              if (startIdx + BATCH_SZ < emailList.length)
-                singleBatch(startIdx + BATCH_SZ);
-              else
-                resolve(resp);
+          emailSlice = emailList.slice(startIdx, startIdx + BATCH_SZ);
+          for (var i = 0; i < emailSlice.length; i++)
+            emailSlice[i] = emailSlice[i].id;
+          batchGetMessages(emailSlice).then(messageRaws => {
+            intrabatch.innerHTML = "Making Google Drive folders";
+            batchMakeFolders(emailSlice, ROOT_ID).then(msgToFolder => {
+              intrabatch.innerHTML = "Uploading attachments to Google Drive";
+              batchUploadAttachments(messageRaws, msgToFolder).then(resp => {
+                intrabatch.innerHTML = "Uploading doctored emails to Gmail";
+                batchAddEmails(resp).then(resp => {
+                if (startIdx + BATCH_SZ < emailList.length)
+                  singleBatch(startIdx + BATCH_SZ);
+                else
+                  resolve(resp);
+                });
               });
             });
           });
-        });
-      };
-      singleBatch(0);
-    });
+        };
+        singleBatch(0);
+      });
 
-    mainPromise.then(resp => {
-      stateChange(StateEnum.DONE);
+      mainPromise.then(resp => {
+        stateChange(StateEnum.DONE);
+      });
+    });
+  });
+}
+
+function readAndCreateLabel(labelName) {
+  return new Promise((resolve, reject) => {
+    gapi.client.gmail.users.labels.list({
+      userId: "me"
+    }).then(resp => {
+      const labels = resp.result.labels;
+      for (var i = 0; i < labels.length; i++)
+        if (labels[i].name === labelName) {
+          resolve(labels[i].id);
+          return;
+        }
+      // we need to create the label since it doesn't exist
+      gapi.client.gmail.users.labels.create({
+        userId: "me",
+        resource: {
+          labelListVisibility: "labelHide",
+          messageListVisibility: "show",
+          name: labelName
+        }
+      }).then(resp => {
+        resolve(resp.result.id);
+      });
     });
   });
 }
