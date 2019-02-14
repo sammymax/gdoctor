@@ -1,8 +1,7 @@
 const CLIENT_ID = "823146793082-7lgsb7a22pdeilk7vbb8k9ptp7jnfgsm.apps.googleusercontent.com";
 const SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
-  "https://www.googleapis.com/auth/gmail.insert",
-  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/gmail.labels"
 ].join(" ");
 const DISCOVERY_DOCS = [
@@ -115,6 +114,9 @@ function stateChange(newState) {
   setStep(config_div, StateEnum.CONFIG);
   setStep(doctoring_div, StateEnum.DOCTORING);
   setStep(done_div, StateEnum.DONE);
+
+  if (state === StateEnum.SEARCHRES)
+    search_div.setAttribute("step", "cur");
 }
 
 function searchEmails() {
@@ -127,9 +129,10 @@ function searchEmails() {
       const nextPageToken = resp.result.nextPageToken;
       if (nextPageToken) {
         request = gapi.client.gmail.users.messages.list({
-          'userId': 'me',
-          'pageToken': nextPageToken,
-          'q': query
+          userId: "me",
+          pageToken: nextPageToken,
+          q: query,
+          maxResults: 500
         });
         getPageOfMessages(request, result);
       } else {
@@ -141,7 +144,8 @@ function searchEmails() {
   };
   const initialRequest = gapi.client.gmail.users.messages.list({
     userId: "me",
-    q: query
+    q: query,
+    maxResults: 500
   });
   getPageOfMessages(initialRequest, []);
 }
@@ -149,46 +153,55 @@ function searchEmails() {
 function processEmails() {
   stateChange(StateEnum.DOCTORING);
   readAndCreateLabel("asd").then(labelId => {
-    gapi.client.drive.files.create({
-      resource: {
-        name: "gdoctor",
-        mimeType: "application/vnd.google-apps.folder"
-      },
-      fields: "id"
-    }).then(resp => {
-      const BATCH_SZ = 10;
-      const ROOT_ID = resp.result.id;
+    readAndCreateLabel("asd2").then(labelId2 => {
+      gapi.client.drive.files.create({
+        resource: {
+          name: "gdoctor",
+          mimeType: "application/vnd.google-apps.folder"
+        },
+        fields: "id"
+      }).then(rootFolderResp => {
+        const BATCH_SZ = 10;
+        const ROOT_ID = rootFolderResp.result.id;
 
-      const mainPromise = new Promise((resolve, reject) => {
-        const singleBatch = (startIdx) => {
-          const endIdx = Math.min(startIdx + BATCH_SZ, emailList.length);
-          interbatch.innerHTML = `Processing emails ${startIdx + 1} - ${endIdx} out of ${emailList.length}`;
-          intrabatch.innerHTML = "Downloading emails";
+        const mainPromise = new Promise((resolve, reject) => {
+          const singleBatch = (startIdx) => {
+            const endIdx = Math.min(startIdx + BATCH_SZ, emailList.length);
+            interbatch.innerHTML = `Processing emails ${startIdx + 1} - ${endIdx} out of ${emailList.length}`;
+            intrabatch.innerHTML = "Downloading emails";
 
-          emailSlice = emailList.slice(startIdx, startIdx + BATCH_SZ);
-          for (var i = 0; i < emailSlice.length; i++)
-            emailSlice[i] = emailSlice[i].id;
-          batchGetMessages(emailSlice).then(messageRaws => {
-            intrabatch.innerHTML = "Making Google Drive folders";
-            batchMakeFolders(emailSlice, ROOT_ID).then(msgToFolder => {
-              intrabatch.innerHTML = "Uploading attachments to Google Drive";
-              batchUploadAttachments(messageRaws, msgToFolder).then(resp => {
-                intrabatch.innerHTML = "Uploading doctored emails to Gmail";
-                batchAddEmails(resp).then(resp => {
-                if (startIdx + BATCH_SZ < emailList.length)
-                  singleBatch(startIdx + BATCH_SZ);
-                else
-                  resolve(resp);
+            var emailSlice = emailList.slice(startIdx, startIdx + BATCH_SZ);
+            const threadSlice = new Array(emailSlice.length);
+            for (var i = 0; i < emailSlice.length; i++) {
+              threadSlice[i] = emailSlice[i].threadId;
+              emailSlice[i] = emailSlice[i].id;
+            }
+
+            batchGetMessages(emailSlice).then(messageRaws => {
+              intrabatch.innerHTML = "Making Google Drive folders";
+              batchMakeFolders(emailSlice, ROOT_ID).then(msgToFolder => {
+                intrabatch.innerHTML = "Uploading attachments to Google Drive";
+                batchUploadAttachments(messageRaws, msgToFolder).then(messageRaws => {
+                  intrabatch.innerHTML = "Uploading doctored emails to Gmail";
+                  batchAddEmails(messageRaws, threadSlice, labelId).then(resp => {
+                    intrabatch.innerHTML = "Updating labels of original emails";
+                    batchLabelOldEmails(emailSlice, labelId2).then(resp2 => {
+                      if (startIdx + BATCH_SZ < emailList.length)
+                        singleBatch(startIdx + BATCH_SZ);
+                      else
+                        resolve(resp);
+                    });
+                  });
                 });
               });
             });
-          });
-        };
-        singleBatch(0);
-      });
+          };
+          singleBatch(0);
+        });
 
-      mainPromise.then(resp => {
-        stateChange(StateEnum.DONE);
+        mainPromise.then(resp => {
+          stateChange(StateEnum.DONE);
+        });
       });
     });
   });
@@ -337,21 +350,41 @@ function batchUploadAttachments(messageRaws, msgToFolder) {
   });
 }
 
-function batchAddEmails(messageRaws) {
+function batchAddEmails(messageRaws, threadIds, labelId) {
   return new Promise((resolve, reject) => {
     const batch = gapi.client.newBatch();
     for (var i = 0; i < messageRaws.length; i++) {
       batch.add(gapi.client.request({
         path: "gmail/v1/users/me/messages",
         method: "POST",
-        params: { uploadType: "multipart" },
+        params: {
+          // otherwise all emails seem like they arrived just now
+          internalDateSource: "dateHeader",
+          uploadType: "multipart"
+        },
         body: {
-          raw: emailToBase64(messageRaws[i].join("\r\n"))
+          raw: emailToBase64(messageRaws[i].join("\r\n")),
+          labelIds: [labelId],
+          threadId: threadIds[i]
         }
       }));
     }
     batch.then(respMap => {
       resolve(respMap);
+    });
+  });
+}
+
+function batchLabelOldEmails(messageIds, labelId) {
+  return new Promise((resolve, reject) => {
+    gapi.client.gmail.users.messages.batchModify({
+      userId: "me",
+      resource: {
+        ids: messageIds,
+        addLabelIds: [labelId]
+      }
+    }).then(resp => {
+      resolve(resp);
     });
   });
 }
