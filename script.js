@@ -123,7 +123,6 @@ function searchEmails() {
   const getPageOfMessages = function(request, result) {
     request.then(resp => {
       result = result.concat(resp.result.messages);
-      console.log(result.length);
       const nextPageToken = resp.result.nextPageToken;
       if (nextPageToken) {
         request = gapi.client.gmail.users.messages.list({
@@ -187,7 +186,6 @@ function processEmails() {
     });
 
     mainPromise.then(resp => {
-      console.log("main promise done! ", resp);
       stateChange(StateEnum.DONE);
     });
   });
