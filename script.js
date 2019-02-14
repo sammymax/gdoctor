@@ -272,7 +272,7 @@ function doctorEmail2(rawLines, links) {
   for (var i = 0; i < links.length; i++)
     linkHtmls[i] = linkToHtml(links[i], `Attachment ${i}`);
 
-  for (var i = 0; i < leaves.length; i++) {
+  for (var i = leaves.length - 1; i >= 0; i--) {
     if (leaves[i].type !== "text/html") continue;
     const encoding = leaves[i].transferEncoding;
     const bodySlice = rawLines.slice(leaves[i].start, leaves[i].end);
