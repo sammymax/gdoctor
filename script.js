@@ -356,24 +356,27 @@ function doctorEmail2(rawLines, links) {
     linkHtmls[i] = linkToHtml(links[i], `Attachment ${i}`);
 
   for (var i = leaves.length - 1; i >= 0; i--) {
-    if (leaves[i].type !== "text/html") continue;
+    if (leaves[i].type !== "text/html" && leaves[i].type !== "text/plain") continue;
+    const newline = (leaves[i].type === "text/html") ? "<br>" : "\r\n";
+    const linkTexts = (leaves[i].type === "text/html") ? linkHtmls : links;
+
     const encoding = leaves[i].transferEncoding;
     const bodySlice = rawLines.slice(leaves[i].start, leaves[i].end);
 
     // we only handle base64, quoted, 7bit, 8bit
     if (encoding === "base64") {
       const body = atob(bodySlice.join(''));
-      const allLinks = linkHtmls.join('<br>');
+      const allLinks = linkTexts.join(newline);
       const newLines = chunk(btoa(body + allLinks), 76, "");
       rawLines.splice(leaves[i].start, leaves[i].end - leaves[i].start, ...newLines);
     } else if (encoding == "quoted") {
       // replace equals sign with escaped equals sign
-      const allLinks = linkHtmls.join('<br>').replace(/=/g, "=3D");
+      const allLinks = linkTexts.join(newline).replace(/=/g, "=3D");
       const newLines = chunk(allLinks, 75, "=");
       newLines.unshift("");
       rawLines.splice(leaves[i].end, 0, ...newLines);
     } else {
-      rawLines.splice(leaves[i].end, 0, ...linkHtmls, "");
+      rawLines.splice(leaves[i].end, 0, ...linkTexts, "");
     }
   }
 }
