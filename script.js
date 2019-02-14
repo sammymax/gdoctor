@@ -533,7 +533,7 @@ function getLeafTypes(rawEmailLines, start, end, resList) {
       type: mimeType,
       transferEncoding: parseTransferEncoding(rawEmailLines, start, headerIdx),
       filename: filename,
-      messageId: parseMessageId(rawEmailLines, start, headerIdx);
+      messageId: parseMessageId(rawEmailLines, start, headerIdx)
     });
   }
 }
