@@ -242,6 +242,10 @@ function batchUploadAttachments(messageRaws, msgToFolder) {
     const linksToAdd = [];
 
     const folderToIdx = {};
+    // we used to keep gapi promise objects in reqs, but now we keep
+    // the parameters passed to uploadBase64 to create the req object
+    // this is needed because when we retry we need a new promise;
+    // the old one has already been resolved and won't re-run
     const reqs = [];
 
     for (var i = 0; i < messageRaws.length; i++) {
@@ -255,20 +259,50 @@ function batchUploadAttachments(messageRaws, msgToFolder) {
     const BATCH_SZ = 5;
 
     const singleBatch = (startIdx) => {
-      Promise.all(reqs.slice(startIdx, startIdx + BATCH_SZ)).then(resp => {
-        for (var i = 0; i < resp.length; i++) {
-          const cur = resp[i].result;
-          linksToAdd[folderToIdx[cur.parents[0]]].push(cur.webViewLink);
-        }
+      var curReqs = [];
+      var rateLimitedReqs = [];
+      const failedRelIdxs = new Set();
 
-        if (startIdx + BATCH_SZ >= reqs.length) {
-          for (var i = 0; i < messageRaws.length; i++)
-            doctorEmail2(doctoredRaws[i], linksToAdd[i]);
-          resolve(doctoredRaws);
-        } else {
-          singleBatch(startIdx + BATCH_SZ);
-        }
-      });
+      const pushProtectedReq = (idx, relIdx) => {
+        curReqs.push(uploadBase64(...reqs[idx]).then(undefined, err => {
+          console.log(err);
+          failedRelIdxs.add(relIdx);
+          if (err.status === 403)
+            rateLimitedReqs.push(idx);
+        }));
+      };
+
+      for (var i = 0; i < BATCH_SZ && startIdx + i < reqs.length; i++)
+        pushProtectedReq(startIdx + i, i);
+
+      const singleBatchTry = (msWait) => {
+        Promise.all(curReqs).then(resp => {
+          for (var i = 0; i < resp.length; i++) {
+            // this one returned an error, skip it
+            if (failedRelIdxs.has(i)) continue;
+            const cur = resp[i].result;
+            linksToAdd[folderToIdx[cur.parents[0]]].push(cur.webViewLink);
+          }
+          if (rateLimitedReqs.length > 0) {
+            curReqs = [];
+            failedRelIdxs.clear();
+            for (var i = 0; i < rateLimitedReqs.length; i++)
+              pushProtectedReq(rateLimitedReqs[i], i);
+            rateLimitedReqs = [];
+            // exponential backoff for rate limit stuff
+            setTimeout(singleBatchTry, msWait, 1.5 * msWait);
+          } else {
+            if (startIdx + BATCH_SZ >= reqs.length) {
+              for (var i = 0; i < messageRaws.length; i++)
+                doctorEmail2(doctoredRaws[i], linksToAdd[i]);
+              resolve(doctoredRaws);
+            } else {
+              singleBatch(startIdx + BATCH_SZ);
+            }
+          }
+        });
+      }
+      singleBatchTry(500);
     }
     singleBatch(0);
   });
@@ -303,7 +337,7 @@ function doctorEmail(rawEmail, reqs, folderId) {
       const removed = rawLines.splice(leaves[i].start, leaves[i].end - leaves[i].start, "gdoctored");
       const fileName = `attachment${i}.${mimeReplacements[leaves[i].type][0]}`;
       const mimeType = mimeReplacements[leaves[i].type][1];
-      reqs.push(uploadBase64(removed.join(''), mimeType, fileName, folderId));
+      reqs.push([removed.join(''), mimeType, fileName, folderId]);
     }
   }
   return rawLines;
