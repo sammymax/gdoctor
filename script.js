@@ -289,13 +289,15 @@ function batchUploadAttachments(messageRaws, msgToFolder) {
     // this is needed because when we retry we need a new promise;
     // the old one has already been resolved and won't re-run
     const reqs = [];
+    // so in case of error we can associate the request to the email
+    const req_messageIds = [];
 
     for (var i = 0; i < messageRaws.length; i++) {
       linksToAdd.push([]);
 
       const cur = messageRaws[i];
       folderToIdx[msgToFolder[cur.id]] = i;
-      doctoredRaws.push(doctorEmail(cur.raw, reqs, msgToFolder[cur.id]));
+      doctoredRaws.push(doctorEmail(cur.raw, reqs, req_messageIds, msgToFolder[cur.id]));
     }
 
     const BATCH_SZ = 5;
@@ -309,8 +311,12 @@ function batchUploadAttachments(messageRaws, msgToFolder) {
         curReqs.push(uploadBase64(...reqs[idx]).then(undefined, err => {
           console.log(err);
           failedRelIdxs.add(relIdx);
-          if (err.status === 403)
+          if (err.status === 403) {
             rateLimitedReqs.push(idx);
+          } else {
+            const searchQuery = "rfc822msgid:" + req_messageIds[idx];
+            console.error(`Error ${err.status} from attachment ${reqs[idx][2]}; search ${searchQuery} in Gmail to see the original email`);
+          }
         }));
       };
 
@@ -389,7 +395,7 @@ function batchLabelOldEmails(messageIds, labelId) {
   });
 }
 
-function doctorEmail(rawEmail, reqs, folderId) {
+function doctorEmail(rawEmail, reqs, req_messageIds, folderId) {
   var rawLines = emailFromBase64(rawEmail).split("\r\n");
   const leaves = [];
   getLeafTypes(rawLines, 0, rawLines.length, leaves);
@@ -401,12 +407,14 @@ function doctorEmail(rawEmail, reqs, folderId) {
       const filename = leaves[i].filename.endsWith(fileExt) ? leaves[i].filename : `attachment${i}.${fileExt}`;
       const mimeType = mimeReplacements[leaves[i].type][1];
       reqs.push([removed.join(''), mimeType, filename, folderId]);
+      req_messageIds.push(leaves[i].messageId);
     } else if (leaves[i].type !== "text/plain" && leaves[i].type !== "text/html") {
       // it's definitely not the email body since not text or html
       // we can't convert it to Google Doc, so just upload it
       const removed = rawLines.splice(leaves[i].start, leaves[i].end - leaves[i].start, "gdoctored");
       const filename = (leaves[i].filename.length > 0) ? leaves[i].filename : `attachment${i}`;
       reqs.push([removed.join(''), leaves[i].type, filename, folderId]);
+      req_messageIds.push(leaves[i].messageId);
     }
   }
   return rawLines;
@@ -524,7 +532,8 @@ function getLeafTypes(rawEmailLines, start, end, resList) {
       end: end,
       type: mimeType,
       transferEncoding: parseTransferEncoding(rawEmailLines, start, headerIdx),
-      filename: filename
+      filename: filename,
+      messageId: parseMessageId(rawEmailLines, start, headerIdx);
     });
   }
 }
@@ -577,7 +586,6 @@ function parseTransferEncoding(rawEmailLines, start, end) {
 
 function parseFilename(rawEmailLines, start, end) {
   for (var i = start; i < end; i++) {
-    // https://www.w3.org/Protocols/rfc1341/5_Content-Transfer-Encoding.html
     if (rawEmailLines[i].toLowerCase().startsWith("content-disposition")) {
       const disposition = getHeaderLine(rawEmailLines, i).toLowerCase();
       const targ = "filename=";
@@ -586,6 +594,17 @@ function parseFilename(rawEmailLines, start, end) {
       const res = trimSemicolon(disposition.substring(targIdx + targ.length));
       if (res.length === 0) return "";
       return unquoteIfNeeded(res);
+    }
+  }
+  return "";
+}
+
+function parseMessageId(rawEmailLines, start, end) {
+  const targ = "message-id:"
+  for (var i = start; i < end; i++) {
+    if (rawEmailLines[i].toLowerCase().startsWith(targ)) {
+      const messageId = getHeaderLine(rawEmailLines, i).toLowerCase();
+      return messageId.substring(targ.length).trim();
     }
   }
   return "";
