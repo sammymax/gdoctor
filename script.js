@@ -45,22 +45,6 @@ const mimeReplacements = {
   "image/x-png":  ["bmp", "application/vnd.google-apps.document"],
 };
 
-function executePromisesSequentially(promiseList) {
-  _executePromisesSequentially(promiseList, 0);
-}
-
-// returns a promise
-function _executePromisesSequentially(promiseList, idx) {
-  console.log("info ", idx, promiseList.length);
-  if (idx === promiseList.length)
-    promiseList[idx].execute();
-  else
-    promiseList[idx].then(
-      resp => _executePromisesSequentially(promiseList, idx + 1),
-      err  => _executePromisesSequentially(promiseList, idx)
-    );
-}
-
 function handleClientLoad() {
   gapi.load("client:auth2", initClient);
 }
@@ -475,31 +459,4 @@ function formatMultipartBody(mimeType, metadata, base64Data, BOUNDARY) {
     base64Data +
     closeDelimiter;
   return body;
-}
-
-function rawBodySubstitute(rawEmail) {
-  var lines = rawEmail.split("\r\n");
-  res = [];
-  getLeafTypes(lines, 0, lines.length, res);
-  console.log(res);
-  for (var i = res.length - 1; i >= 0; i--) {
-    if (res[i].type in mimeReplacements) {
-      const removed = lines.splice(res[i].start, res[i].end - res[i].start, "lolol");
-      const fileExtension = mimeReplacements[res[i].type][0];
-      const mimeType = mimeReplacements[res[i].type][1];
-      uploadBase64(removed.join(''), mimeType, `attachment${i}.${fileExtension}`);
-    }
-  }
-  newEmail = emailToBase64(lines.join("\r\n"));
-  gapi.client.request({
-    path: "gmail/v1/users/me/messages",
-    method: "POST",
-    params: { uploadType: "multipart" },
-    body: {
-      raw: newEmail
-    }
-  }).then(
-    resp => console.log("yayy, ", resp),
-    err  => console.log("errr, ", err)
-  );
 }
