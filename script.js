@@ -48,9 +48,13 @@ const auth_div = document.getElementById("auth");
 const search_div = document.getElementById("search");
 const search_res_div = document.getElementById("search-res");
 const config_div = document.getElementById("config");
+const doctoring_div = document.getElementById("doctoring");
+const done_div = document.getElementById("done");
 
 const query_input = document.getElementById("query-input");
 const email_count = document.getElementById("email-count");
+const interbatch = document.getElementById("interbatch");
+const intrabatch = document.getElementById("intrabatch");
 
 const StateEnum = {
   INIT: 0,
@@ -59,7 +63,8 @@ const StateEnum = {
   SEARCHING: 3,
   SEARCHRES: 4,
   CONFIG: 5,
-  DOCTORING: 6
+  DOCTORING: 6,
+  DONE: 7
 };
 var state;
 stateChange(StateEnum.INIT);
@@ -99,26 +104,50 @@ function stateChange(newState) {
     search_div.setAttribute("step", "after");
     search_res_div.setAttribute("step", "after");
     config_div.setAttribute("step", "after");
+    doctoring_div.setAttribute("step", "after");
+    done_div.setAttribute("step", "after");
   } else if (state === StateEnum.SEARCH) {
     auth_div.setAttribute("step", "before");
     search_div.setAttribute("step", "cur");
     search_res_div.setAttribute("step", "after");
     config_div.setAttribute("step", "after");
+    doctoring_div.setAttribute("step", "after");
+    done_div.setAttribute("step", "after");
   } else if (state === StateEnum.SEARCHING) {
     auth_div.setAttribute("step", "before");
     search_div.setAttribute("step", "before");
     search_res_div.setAttribute("step", "after");
     config_div.setAttribute("step", "after");
+    doctoring_div.setAttribute("step", "after");
+    done_div.setAttribute("step", "after");
   } else if (state === StateEnum.SEARCHRES) {
     auth_div.setAttribute("step", "before");
     search_div.setAttribute("step", "cur");
     search_res_div.setAttribute("step", "cur");
     config_div.setAttribute("step", "after");
+    doctoring_div.setAttribute("step", "after");
+    done_div.setAttribute("step", "after");
   } else if (state === StateEnum.CONFIG) {
     auth_div.setAttribute("step", "before");
     search_div.setAttribute("step", "before");
     search_res_div.setAttribute("step", "before");
     config_div.setAttribute("step", "cur");
+    doctoring_div.setAttribute("step", "after");
+    done_div.setAttribute("step", "after");
+  } else if (state === StateEnum.DOCTORING) {
+    auth_div.setAttribute("step", "before");
+    search_div.setAttribute("step", "before");
+    search_res_div.setAttribute("step", "before");
+    config_div.setAttribute("step", "before");
+    doctoring_div.setAttribute("step", "cur");
+    done_div.setAttribute("step", "after");
+  } else if (state === StateEnum.DONE) {
+    auth_div.setAttribute("step", "before");
+    search_div.setAttribute("step", "before");
+    search_res_div.setAttribute("step", "before");
+    config_div.setAttribute("step", "before");
+    doctoring_div.setAttribute("step", "before");
+    done_div.setAttribute("step", "cur");
   }
 }
 
@@ -153,6 +182,7 @@ function searchEmails() {
 }
 
 function processEmails() {
+  stateChange(StateEnum.DOCTORING);
   gapi.client.drive.files.create({
     resource: {
       name: "gdoctor",
@@ -165,12 +195,19 @@ function processEmails() {
 
     const mainPromise = new Promise((resolve, reject) => {
       const singleBatch = (startIdx) => {
+        const endIdx = Math.min(startIdx + BATCH_SZ, emailList.length);
+        interbatch.innerHTML = `Processing emails ${startIdx + 1} - ${endIdx} out of ${emailList.length}`;
+        intrabatch.innerHTML = "Downloading emails";
+
         emailSlice = emailList.slice(startIdx, startIdx + BATCH_SZ);
         for (var i = 0; i < emailSlice.length; i++)
           emailSlice[i] = emailSlice[i].id;
         batchGetMessages(emailSlice).then(messageRaws => {
+          intrabatch.innerHTML = "Making Google Drive folders";
           batchMakeFolders(emailSlice, ROOT_ID).then(msgToFolder => {
+            intrabatch.innerHTML = "Uploading attachments to Google Drive";
             batchUploadAttachments(messageRaws, msgToFolder).then(resp => {
+              intrabatch.innerHTML = "Uploading doctored emails to Gmail";
               batchAddEmails(resp).then(resp => {
               if (startIdx + BATCH_SZ < emailList.length)
                 singleBatch(startIdx + BATCH_SZ);
@@ -186,6 +223,7 @@ function processEmails() {
 
     mainPromise.then(resp => {
       console.log("main promise done! ", resp);
+      stateChange(StateEnum.DONE);
     });
   });
 }

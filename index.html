@@ -12,8 +12,9 @@
       }
       div {
         display: inline-block;
-        margin: 25px 30px;
+        padding: 25px 30px;
         box-sizing: border-box;
+        width: 100%;
       }
       #main {
         max-width: 800px;
@@ -51,6 +52,9 @@
       #search-res {
         margin-top: -35px;
       }
+      #doctoring > p {
+        text-align: center;
+      }
     </style>
   </head>
   <body>
@@ -78,6 +82,14 @@
         <h1>3. Configure doctoring options</h1>
         <p>Press the button below to let gdoctor start doing its magic. <b>A reliable internet connection is strongly recommended</b> because your computer is what's downloading the attachments and submitting them to Google Drive for upload--this is a static website.</p>
         <button onclick="processEmails()">gdoctor emails</button>
+      </div>
+      <div id="doctoring">
+        <p id="interbatch"></p>
+        <p id="intrabatch"></p>
+      </div>
+      <div id="done">
+        <h2>Done!</h2>
+        <p>Want to run gdoctor on another set of emails? Reload the page.</p>
       </div>
     </div>
 
