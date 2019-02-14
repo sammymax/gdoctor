@@ -99,56 +99,21 @@ function stateChange(newState) {
   main_div.style.display = (state === StateEnum.INIT) ? "none": "block";
   retrieving.style.display = (state === StateEnum.SEARCHING) ? "block" : "none";
 
-  if (state === StateEnum.AUTH) {
-    auth_div.setAttribute("step", "cur");
-    search_div.setAttribute("step", "after");
-    search_res_div.setAttribute("step", "after");
-    config_div.setAttribute("step", "after");
-    doctoring_div.setAttribute("step", "after");
-    done_div.setAttribute("step", "after");
-  } else if (state === StateEnum.SEARCH) {
-    auth_div.setAttribute("step", "before");
-    search_div.setAttribute("step", "cur");
-    search_res_div.setAttribute("step", "after");
-    config_div.setAttribute("step", "after");
-    doctoring_div.setAttribute("step", "after");
-    done_div.setAttribute("step", "after");
-  } else if (state === StateEnum.SEARCHING) {
-    auth_div.setAttribute("step", "before");
-    search_div.setAttribute("step", "before");
-    search_res_div.setAttribute("step", "after");
-    config_div.setAttribute("step", "after");
-    doctoring_div.setAttribute("step", "after");
-    done_div.setAttribute("step", "after");
-  } else if (state === StateEnum.SEARCHRES) {
-    auth_div.setAttribute("step", "before");
-    search_div.setAttribute("step", "cur");
-    search_res_div.setAttribute("step", "cur");
-    config_div.setAttribute("step", "after");
-    doctoring_div.setAttribute("step", "after");
-    done_div.setAttribute("step", "after");
-  } else if (state === StateEnum.CONFIG) {
-    auth_div.setAttribute("step", "before");
-    search_div.setAttribute("step", "before");
-    search_res_div.setAttribute("step", "before");
-    config_div.setAttribute("step", "cur");
-    doctoring_div.setAttribute("step", "after");
-    done_div.setAttribute("step", "after");
-  } else if (state === StateEnum.DOCTORING) {
-    auth_div.setAttribute("step", "before");
-    search_div.setAttribute("step", "before");
-    search_res_div.setAttribute("step", "before");
-    config_div.setAttribute("step", "before");
-    doctoring_div.setAttribute("step", "cur");
-    done_div.setAttribute("step", "after");
-  } else if (state === StateEnum.DONE) {
-    auth_div.setAttribute("step", "before");
-    search_div.setAttribute("step", "before");
-    search_res_div.setAttribute("step", "before");
-    config_div.setAttribute("step", "before");
-    doctoring_div.setAttribute("step", "before");
-    done_div.setAttribute("step", "cur");
+  const setStep = (div, divState) => {
+    if (divState < state)
+      div.setAttribute("step", "before");
+    if (divState === state)
+      div.setAttribute("step", "cur");
+    if (divState > state)
+      div.setAttribute("step", "after");
   }
+
+  setStep(auth_div, StateEnum.AUTH);
+  setStep(search_div, StateEnum.SEARCH);
+  setStep(search_res_div, StateEnum.SEARCHRES);
+  setStep(config_div, StateEnum.CONFIG);
+  setStep(doctoring_div, StateEnum.DOCTORING);
+  setStep(done_div, StateEnum.DONE);
 }
 
 function searchEmails() {
