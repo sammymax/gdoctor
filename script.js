@@ -46,6 +46,7 @@ const retrieving = document.getElementById("retrieving");
 const main_div = document.getElementById("main");
 const auth_div = document.getElementById("auth");
 const search_div = document.getElementById("search");
+const search_res_div = document.getElementById("search-res");
 const config_div = document.getElementById("config");
 
 const query_input = document.getElementById("query-input");
@@ -57,7 +58,8 @@ const StateEnum = {
   SEARCH: 2,
   SEARCHING: 3,
   SEARCHRES: 4,
-  DOCTORING: 5
+  CONFIG: 5,
+  DOCTORING: 6
 };
 var state;
 stateChange(StateEnum.INIT);
@@ -95,18 +97,27 @@ function stateChange(newState) {
   if (state === StateEnum.AUTH) {
     auth_div.setAttribute("step", "cur");
     search_div.setAttribute("step", "after");
+    search_res_div.setAttribute("step", "after");
     config_div.setAttribute("step", "after");
   } else if (state === StateEnum.SEARCH) {
     auth_div.setAttribute("step", "before");
     search_div.setAttribute("step", "cur");
+    search_res_div.setAttribute("step", "after");
     config_div.setAttribute("step", "after");
   } else if (state === StateEnum.SEARCHING) {
     auth_div.setAttribute("step", "before");
     search_div.setAttribute("step", "before");
+    search_res_div.setAttribute("step", "after");
     config_div.setAttribute("step", "after");
   } else if (state === StateEnum.SEARCHRES) {
     auth_div.setAttribute("step", "before");
+    search_div.setAttribute("step", "cur");
+    search_res_div.setAttribute("step", "cur");
+    config_div.setAttribute("step", "after");
+  } else if (state === StateEnum.CONFIG) {
+    auth_div.setAttribute("step", "before");
     search_div.setAttribute("step", "before");
+    search_res_div.setAttribute("step", "before");
     config_div.setAttribute("step", "cur");
   }
 }

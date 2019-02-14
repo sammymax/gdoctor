@@ -41,6 +41,16 @@
       div[step="after"] > h1 {
         visibility: visible;
       }
+      #search-form {
+        display: flex;
+      }
+      #query-input {
+        flex-grow: 1;
+        margin-right: 10px;
+      }
+      #search-res {
+        margin-top: -35px;
+      }
     </style>
   </head>
   <body>
@@ -55,14 +65,17 @@
         <h1>2. Enter Gmail search query</h1>
         <p>Enter a query just like you would in the Gmail search box. All emails that match the search will be processed.<p>
         <p>It is recommended to use the Gmail search box to test the search string first, and to include <b><i>has:attachment</i></b> somewhere in the search query (gdoctor has no effect on emails with no attachments).
-        <form onsubmit="searchEmails(); return false">
+        <form id="search-form" onsubmit="searchEmails(); return false">
           <input type="text" name="query" id="query-input" placeholder="Email search query">
           <input type="submit" value="Submit">
         </form>
       </div>
+      <div id="search-res">
+        <p id="email-count"></p>
+        <button onclick="stateChange(StateEnum.CONFIG)">Next step: configure</button>
+      </div>
       <div id="config">
         <h1>3. Configure doctoring options</h1>
-        <p id="email-count"></p>
         <p>Press the button below to let gdoctor start doing its magic. <b>A reliable internet connection is strongly recommended</b> because your computer is what's downloading the attachments and submitting them to Google Drive for upload--this is a static website.</p>
         <button onclick="processEmails()">gdoctor emails</button>
       </div>
