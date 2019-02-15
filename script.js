@@ -94,6 +94,11 @@ function initClient() {
   }).then(function () {
     const signedin = gapi.auth2.getAuthInstance().isSignedIn.get();
     stateChange(signedin ? StateEnum.SEARCH : StateEnum.AUTH);
+
+    gapi.auth2.getAuthInstance().isSignedIn.listen((isSignedIn) => {
+      if (isSignedIn && state === StateEnum.AUTH)
+        stateChange(StateEnum.SEARCH);
+    });
   }, function(error) {
     console.log(JSON.stringify(error, null, 2));
   });
