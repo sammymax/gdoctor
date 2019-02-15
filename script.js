@@ -56,6 +56,17 @@ const email_count = document.getElementById("email-count");
 const interbatch = document.getElementById("interbatch");
 const intrabatch = document.getElementById("intrabatch");
 
+const label_ons = [
+  document.getElementById("oldlabel-on"),
+  document.getElementById("newlabel-on")
+];
+const label_ins = [
+  document.getElementById("oldlabel"),
+  document.getElementById("newlabel")
+];
+toggleInput(0);
+toggleInput(1);
+
 const StateEnum = {
   INIT: 0,
   AUTH: 1,
@@ -117,6 +128,12 @@ function stateChange(newState) {
 
   if (state === StateEnum.SEARCHRES)
     search_div.setAttribute("step", "cur");
+}
+
+function toggleInput(which) {
+  const val = label_ons[which].checked;
+  if (val) label_ins[which].removeAttribute("disabled");
+  else label_ins[which].setAttribute("disabled", "");
 }
 
 function searchEmails() {

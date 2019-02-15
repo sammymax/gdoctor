@@ -55,6 +55,20 @@
       #doctoring > p {
         text-align: center;
       }
+      .label-form {
+        display: flex;
+        align-items: center;
+        padding: 0;
+      }
+      .label-form > p {
+        margin-right: 10px;
+      }
+      .label-input {
+        flex-grow: 1;
+      }
+      input[type="checkbox"] {
+        margin-right: 15px;
+      }
     </style>
   </head>
   <body>
@@ -81,6 +95,16 @@
       <div id="config">
         <h1>3. Configure doctoring options</h1>
         <p>Press the button below to let gdoctor start doing its magic. <b>A reliable internet connection is strongly recommended</b> because your computer is what's downloading the attachments and submitting them to Google Drive for upload--this is a static website.</p>
+        <div class="label-form">
+          <input type="checkbox" id="oldlabel-on" onchange="toggleInput(0)" checked>
+          <p>Apply the following label to all original emails:</p>
+          <input class="label-input" type=text" id="oldlabel" value="gdoc-original">
+        </div>
+        <div class="label-form">
+          <input type="checkbox" id="newlabel-on" onchange="toggleInput(1)" checked>
+          <p>Apply the following label to all gdoctored emails:</p>
+          <input class="label-input" type=text" id="newlabel" value="gdoc">
+        </div>
         <button onclick="processEmails()">gdoctor emails</button>
       </div>
       <div id="doctoring">
