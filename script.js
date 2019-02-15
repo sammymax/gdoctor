@@ -142,17 +142,23 @@ function searchEmails() {
 
   const getPageOfMessages = function(request, result) {
     request.then(resp => {
-      result = result.concat(resp.result.messages);
-      const nextPageToken = resp.result.nextPageToken;
-      if (nextPageToken) {
-        request = gapi.client.gmail.users.messages.list({
-          userId: "me",
-          pageToken: nextPageToken,
-          q: query,
-          maxResults: 500
-        });
-        getPageOfMessages(request, result);
-      } else {
+      var done = !("messages" in resp.result);
+      if (!done) {
+        result = result.concat(resp.result.messages);
+        const nextPageToken = resp.result.nextPageToken;
+        if (nextPageToken) {
+          request = gapi.client.gmail.users.messages.list({
+            userId: "me",
+            pageToken: nextPageToken,
+            q: query,
+            maxResults: 500
+          });
+          getPageOfMessages(request, result);
+        } else {
+          done = true;
+        }
+      }
+      if (done) {
         emailList = result;
         stateChange(StateEnum.SEARCHRES);
         email_count.innerHTML = `<b>${result.length}</b> emails were found matching your search query.`;
@@ -169,8 +175,13 @@ function searchEmails() {
 
 function processEmails() {
   stateChange(StateEnum.DOCTORING);
-  readAndCreateLabel("asd").then(labelId => {
-    readAndCreateLabel("asd2").then(labelId2 => {
+  const oldlabel = label_ins[0].value;
+  const newlabel = label_ins[1].value;
+  const oldLabelEnabled = label_ons[0].checked;
+  const newLabelEnabled = label_ons[1].checked;
+
+  readAndCreateLabel(oldlabel, oldLabelEnabled).then(oldLabelId => {
+    readAndCreateLabel(newlabel, newLabelEnabled).then(newLabelId => {
       gapi.client.drive.files.create({
         resource: {
           name: "gdoctor",
@@ -200,9 +211,9 @@ function processEmails() {
                 intrabatch.innerHTML = "Uploading attachments to Google Drive";
                 batchUploadAttachments(messageRaws, msgToFolder).then(messageRaws => {
                   intrabatch.innerHTML = "Uploading doctored emails to Gmail";
-                  batchAddEmails(messageRaws, threadSlice, labelId).then(resp => {
+                  batchAddEmails(messageRaws, threadSlice, newLabelId).then(resp => {
                     intrabatch.innerHTML = "Updating labels of original emails";
-                    batchLabelOldEmails(emailSlice, labelId2).then(resp2 => {
+                    batchLabelOldEmails(emailSlice, oldLabelId).then(resp2 => {
                       if (startIdx + BATCH_SZ < emailList.length)
                         singleBatch(startIdx + BATCH_SZ);
                       else
@@ -224,8 +235,13 @@ function processEmails() {
   });
 }
 
-function readAndCreateLabel(labelName) {
+function readAndCreateLabel(labelName, enabled) {
   return new Promise((resolve, reject) => {
+    if (!enabled) {
+      resolve("");
+      return;
+    }
+
     gapi.client.gmail.users.labels.list({
       userId: "me"
     }).then(resp => {
@@ -387,7 +403,7 @@ function batchAddEmails(messageRaws, threadIds, labelId) {
         },
         body: {
           raw: emailToBase64(messageRaws[i].join("\r\n")),
-          labelIds: [labelId],
+          labelIds: (labelId !== "") ? [labelId] : [],
           threadId: threadIds[i]
         }
       }));
@@ -400,6 +416,11 @@ function batchAddEmails(messageRaws, threadIds, labelId) {
 
 function batchLabelOldEmails(messageIds, labelId) {
   return new Promise((resolve, reject) => {
+    if (labelId === "") {
+      resolve();
+      return;
+    }
+
     gapi.client.gmail.users.messages.batchModify({
       userId: "me",
       resource: {
